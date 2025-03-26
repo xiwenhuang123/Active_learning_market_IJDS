@@ -12,9 +12,9 @@ performance with fewer data points compared to conventional methods. Our proposa
 
 To run the experiments:
 
-- `Variance_scenario.py`: Executes the real-world data in the variance-dependent scenario (Section 4.1).&#8203;:contentReference[oaicite:9]{index=9}
+-  `Variance_scenario.py` : run the real-world data in the variance-dependent scenario (Section 4.1).
 
-- `MSE_scenario.py`: :contentReference[oaicite:10]{index=10}&#8203;:contentReference[oaicite:11]{index=11}
+- `MSE_scenario.py`: run the energy building data in the MSE-dependent scenario (Section 4.2).
 
 ## Development environment setup
 
