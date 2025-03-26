@@ -18,9 +18,9 @@ To run the experiments:
 
 Input data and results:
 
--`\Data`: includes real estate data `Real estate valuation data set.xlsx` and energy building data in the file `Hog_Buidings` (please select "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" for reproducability).
+- `\Data`: includes real estate data `Real estate valuation data set.xlsx` and energy building data in the file `Hog_Buidings` (please select "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" for reproducability).
 
--`\Plots`: includes all the output in each scenario in Section 4.
+- `\Plots`: includes all the output in each scenario in Section 4.
 
 ## Development environment setup
 
