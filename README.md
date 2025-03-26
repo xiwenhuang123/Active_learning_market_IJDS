@@ -10,7 +10,7 @@ performance with fewer data points compared to conventional methods. Our proposa
 ## Code organization
 Running those experiments:
 
--```Variance_scenario.py``` : run the real world data in the variance-dependant scenario (Section 4.1).
+-Item 1 ```Variance_scenario.py``` : run the real world data in the variance-dependant scenario (Section 4.1).
 -```MSE_scenario.py```: run the engergy building data in the MSE-dependant scenario (Section 4.2).
 ## Development environment setup
 
