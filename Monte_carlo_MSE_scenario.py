@@ -1,3 +1,8 @@
+"""
+MSE-dependent scenario with Monte-Carlo simulation
+@author: Xiwen Huang
+"""
+
 # MSE-dependent scenario: figures, monte-carlo
 import numpy as np
 from sklearn.linear_model import LinearRegression
