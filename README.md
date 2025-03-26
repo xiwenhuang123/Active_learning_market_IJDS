@@ -8,7 +8,9 @@ We introduce and analyse active learning markets as a way to purchase labels, in
 performance with fewer data points compared to conventional methods. Our proposal comprises an easy-to-implement practical solution for optimizing data acquisition in resource-constrained environments.
 
 ## Code organization
-
+Running those experiments:
+```Variance_scenario.py``` : run the real world data in the variance-dependant scenario (Section 4.1).
+```MSE_scenario.py```: run the engergy building data in the MSE-dependant scenario (Section 4.2).
 ## Development environment setup
 
 This project utilizes ```Python 3.11.7```. It's recommended to create a virtual environment to manage dependencies and ensure consistency across different development setups.
