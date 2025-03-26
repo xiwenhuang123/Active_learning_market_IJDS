@@ -14,7 +14,11 @@ To run the experiments:
 
 -  `Variance_scenario.py` : run the real-world data in the variance-dependent scenario (Section 4.1).
 
-- `MSE_scenario.py`: run the energy building data in the MSE-dependent scenario (Section 4.2).
+- `MSE_scenario.py`: run the energy building data "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" in the MSE-dependent scenario (Section 4.2).
+
+Input data and results:
+`\Data`: includes real estate data `Real estate valuation data set.xlsx` and energy building data in the file `Hog_Buidings` (please select "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" for reproducability).
+`\Plots`: includes all the output in each scenario in Section 4.
 
 ## Development environment setup
 
