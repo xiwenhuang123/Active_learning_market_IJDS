@@ -1,3 +1,8 @@
+"""
+Variance-dependent scenario with Monte-Carlo simulation
+@author: Xiwen Huang
+"""
+
 # variance-dependent scenario:  monte-carlo
 # Compare VBAL, QBCAL and RSC
 from ucimlrepo import fetch_ucirepo 
