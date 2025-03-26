@@ -9,8 +9,9 @@ performance with fewer data points compared to conventional methods. Our proposa
 
 ## Code organization
 Running those experiments:
-```Variance_scenario.py``` : run the real world data in the variance-dependant scenario (Section 4.1).
-```MSE_scenario.py```: run the engergy building data in the MSE-dependant scenario (Section 4.2).
+
+-```Variance_scenario.py``` : run the real world data in the variance-dependant scenario (Section 4.1).
+-```MSE_scenario.py```: run the engergy building data in the MSE-dependant scenario (Section 4.2).
 ## Development environment setup
 
 This project utilizes ```Python 3.11.7```. It's recommended to create a virtual environment to manage dependencies and ensure consistency across different development setups.
@@ -23,7 +24,7 @@ conda create -n project_env python=3.11.7
 conda activate project_env
 ```
 Then install all the necessary packages using ```pip install -r requirement.txt```.
-For any inquiries, please contact: ```xiwen.huang23@ic.ac.uk```
+-For any inquiries, please contact: ```xiwen.huang23@ic.ac.uk```
 
 
 
