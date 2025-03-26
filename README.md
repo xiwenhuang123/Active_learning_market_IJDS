@@ -12,15 +12,18 @@ performance with fewer data points compared to conventional methods. Our proposa
 
 To run the experiments:
 
--  `Variance_scenario.py` : run the real-world data in the variance-dependent scenario (Section 4.1).
+-  `Variance_scenario.py` : run the real estate data in the variance-dependent scenario (Section 4.1.1 to 4.1.3).
 
-- `MSE_scenario.py`: run the energy building data "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" in the MSE-dependent scenario (Section 4.2).
+- `MSE_scenario.py`: run the energy building data "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" in the MSE-dependent scenario (Section 4.2.1 to 4.2.3).
+
+- `Monte_carlo_variance_scenario.py`: run the monte carlo simulation using the real estate data in the variance-dependent scenario (Section 4.1.5).
+- `Monte_carlo_MSE_scenario.py`: run the monte carlo simulation using the energy building data in the MSE-dependent scenario (Section 4.2.5).
 
 Input data and results:
 
 - `\Data`: includes real estate data `Real estate valuation data set.xlsx` and energy building data in the file `Hog_Buidings` (please select "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" for reproducability).
 
-- `\Plots`: includes all the output in each scenario in Section 4.
+- `\Plots`: includes all the output in each scenario in Section 4 (includes additional figures not mentioned in this paper).
 
 ## Development environment setup
 
