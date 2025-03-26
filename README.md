@@ -17,5 +17,6 @@ demonstrate the robustness of our approach, consistently achieving superior
 performance with fewer data points compared to conventional methods. Our
 proposal comprises an easy-to-implement practical solution for optimizing data
 acquisition in resource-constrained environments
-## Repository Structure
+## Environment set up
+This code has been developed using Python 3.11.7. 
 
