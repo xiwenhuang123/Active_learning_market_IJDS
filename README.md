@@ -7,12 +7,15 @@ This repository contains the code and data for the paper: "How to Purchase Label
 We introduce and analyse active learning markets as a way to purchase labels, in situations where analysts aim to acquire additional data to improve model fitting, or to better train models for predictive analytics applications. This comes in contrast to the many proposals that already exist to purchase features and examples. By originally formalizing the market clearing as an optimization problem, we integrate budget constraints and improvement thresholds into the data selection process, ensuring efficiency and cost-effectiveness. We focus on a single-buyer-multiple-seller setup and propose the use of two activelearning strategies (variance based and query-by-committee based), paired with distinct pricing mechanisms. They are compared to a benchmark random sampling approach. The proposed strategies are validated on real-world datasets from two critical domains: real estate pricing and energy forecasting. Results demonstrate the robustness of our approach, consistently achieving superior
 performance with fewer data points compared to conventional methods. Our proposal comprises an easy-to-implement practical solution for optimizing data acquisition in resource-constrained environments.
 
-## Code organization
-Running those experiments:
 
-- ```Variance_scenario.py``` : run the real world data in the variance-dependant scenario (Section 4.1).
+## Code Organization
 
--```MSE_scenario.py```: run the engergy building data in the MSE-dependant scenario (Section 4.2).
+To run the experiments:
+
+- `Variance_scenario.py`: Executes the real-world data in the variance-dependent scenario (Section 4.1).&#8203;:contentReference[oaicite:9]{index=9}
+
+- `MSE_scenario.py`: :contentReference[oaicite:10]{index=10}&#8203;:contentReference[oaicite:11]{index=11}
+
 ## Development environment setup
 
 This project utilizes ```Python 3.11.7```. It's recommended to create a virtual environment to manage dependencies and ensure consistency across different development setups.
