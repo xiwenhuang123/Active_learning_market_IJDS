@@ -1,4 +1,8 @@
-# variance-dependent scenario: figures, no monte-carlo
+"""
+Variance-dependent scenario
+@author: Xiwen Huang
+"""
+
 # Compare VBAL, QBCAL and RSC
 from ucimlrepo import fetch_ucirepo 
 from sklearn.model_selection import train_test_split
