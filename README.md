@@ -17,6 +17,17 @@ demonstrate the robustness of our approach, consistently achieving superior
 performance with fewer data points compared to conventional methods. Our
 proposal comprises an easy-to-implement practical solution for optimizing data
 acquisition in resource-constrained environments
-## Environment set up
-This code has been developed using Python 3.11.7. 
+## Development Environment Setup
 
+This project utilizes ```Python 3.11.7```. It's recommended to create a virtual environment to manage dependencies and ensure consistency across different development setups.
+
+### Using Conda
+
+If you have Conda installed, you can create and activate a new environment with the following commands:
+
+```bash
+# Create a new conda environment named 'project_env' with Python 3.11.7
+conda create -n project_env python=3.11.7
+
+# Activate the newly created environment
+conda activate project_env
