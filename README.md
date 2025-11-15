@@ -1,44 +1,88 @@
 # Active_learning_market_IJDS
+Repository for the IJDS submission by **Xiwen Huang**
 
-This repository contains the code and data for the paper: "How to Purchase Labels? A Cost-effective Approach Using Active Learning Markets" submitted to *INFORMS Journal on Data Science (IJDS)*.
+This repository contains the code and data for the paper:  
+**"How to Purchase Labels? A Cost-effective Approach Using Active Learning Markets"**,  
+submitted to *INFORMS Journal on Data Science (IJDS)*.
 
 ## Abstract
 
-We introduce and analyse active learning markets as a way to purchase labels, in situations where analysts aim to acquire additional data to improve model fitting, or to better train models for predictive analytics applications. This comes in contrast to the many proposals that already exist to purchase features and examples. By originally formalizing the market clearing as an optimization problem, we integrate budget constraints and improvement thresholds into the data selection process, ensuring efficiency and cost-effectiveness. We focus on a single-buyer-multiple-seller setup and propose the use of two activelearning strategies (variance based and query-by-committee based), paired with distinct pricing mechanisms. They are compared to a benchmark random sampling approach. The proposed strategies are validated on real-world datasets from two critical domains: real estate pricing and energy forecasting. Results demonstrate the robustness of our approach, consistently achieving superior
-performance with fewer data points compared to conventional methods. Our proposal comprises an easy-to-implement practical solution for optimizing data acquisition in resource-constrained environments.
+We introduce and analyse active learning markets as a way to purchase labels, in situations where analysts aim to acquire additional data to improve model fitting, or to better train models for predictive analytics applications. This contrasts with many existing proposals that focus on purchasing features and examples. By formalizing the market clearing as an optimization problem, we integrate budget constraints and improvement thresholds into the data selection process, ensuring efficiency and cost-effectiveness.  
 
+We focus on a single-buyer–multiple-seller setup and propose two active learning strategies (variance-based and query-by-committee based), combined with distinct pricing mechanisms. These strategies are compared to a benchmark random sampling approach. The proposed methods are validated on real-world datasets from two domains: real estate pricing and energy forecasting. Results demonstrate strong robustness and consistent performance gains with fewer acquired data points. Our proposal offers a practical and easy-to-implement solution for optimizing data acquisition in resource-constrained environments.
+
+---
+
+## 📦 Data Location (Required for Reproducibility)
+
+> **Important:**  
+> All datasets used in the predictive-ability scenario must be placed inside  
+> `data/Hog_buildings/`.  
+> The repository uses **relative paths only**.  
+> No machine-specific absolute paths (e.g., `/Users/...`) are used, ensuring that all scripts run on any machine without modification.
+
+---
 
 ## Code Organization
 
 To run the experiments:
 
--  `Variance_scenario.py` : run the real estate data in the variance-dependent scenario (Section 4.1.1 to 4.1.3).
+---
 
-- `MSE_scenario.py`: run the energy building data "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" in the MSE-dependent scenario (Section 4.2.1 to 4.2.3).
+### **1. Estimation-quality–focused scenario**
 
-- `Monte_carlo_variance_scenario.py`: run the monte carlo simulation using the real estate data in the variance-dependent scenario (Section 4.1.5).
-- `Monte_carlo_MSE_scenario.py`: run the monte carlo simulation using the energy building data in the MSE-dependent scenario (Section 4.2.5).
+- `IJDS_Variance.py`: runs the real-estate data in the estimation-quality–focused scenario (Section 4.1.1–4.1.5).  
+  **Reproduces:** Figures 3–6, Figures 9a–9f, Table 2, and Tables 4–5 (Appendix).  
+  Also generates additional diagnostic plots not included in the paper.
 
-Input data and results:
+- `Monte_carlo_variance_scenario.py`: runs the Monte Carlo simulation for the estimation-quality–focused scenario  
+  (Section 4.1.5: Data Variability).  
+  **Reproduces:** Figures 7–8.
 
-- `\Data`: includes real estate data `Real estate valuation data set.xlsx` and energy building data in the file `Hog_Buidings` (please select "Hog_industrial_Rachael.csv" and "Hog_industrial_Madge.csv" for reproducability).
+---
 
-- `\Plots`: includes all the output in each scenario in Section 4 (includes additional figures not mentioned in this paper).
+### **2. Predictive-ability–focused scenario**
+
+- `IJDS_MSE.py`: runs the energy building data (`Hog_industrial_Rachael.csv` and `Hog_industrial_Madge.csv`)  
+  in the predictive-ability–focused scenario (Section 4.2.1–4.2.5).  
+  **Reproduces:** Figures 10–11, Figures 14a–14f, and Tables 6–7 (Appendix).  
+  Also generates additional diagnostic plots not included in the paper.
+
+- `Monte_carlo_MSE_scenario.py`: runs the Monte Carlo simulation using the energy building data  
+  in the predictive-ability–focused scenario (Section 4.2.5: Data Variability).  
+  **Reproduces:** Figures 12–13.
+
+---
+
+### Input data and outputs
+
+- `data/`: includes the real estate dataset (`Real estate valuation data set.xlsx`)  
+  and building energy datasets in `Hog_buildings/`  
+  (select `Hog_industrial_Rachael.csv` and `Hog_industrial_Madge.csv` for reproducibility).
+
+- `Plots/`: contains all experiment output figures for Section 4  
+  (including additional diagnostic plots not shown in the paper).
+
+---
 
 ## Development environment setup
 
-This project utilizes ```Python 3.11.7```. It's recommended to create a virtual environment to manage dependencies and ensure consistency across different development setups.
-If you have Conda installed, you can create and activate a new environment with the following commands:
+This project uses **Python 3.11.7**.  
+It is recommended to create a virtual environment to ensure consistent dependencies.
+
+If using Conda:
+
 ```bash
-# Create a new conda environment named 'project_env' with Python 3.11.7
+# Create a new conda environment with Python 3.11.7
 conda create -n project_env python=3.11.7
 
-# Activate the newly created environment
+# Activate the environment
 conda activate project_env
 ```
-Then install all the necessary packages using ```pip install -r requirement.txt```.
--For any inquiries, please contact: ```xiwen.huang23@ic.ac.uk```
+Then install all dependencies:
+```
+pip install -r requirements.txt
+```
 
-
-
-
+For any inquiries, please contact:
+📧 xiwen.huang23@ic.ac.uk
