@@ -14,7 +14,15 @@ from sklearn.metrics import mean_squared_error
 from matplotlib.ticker import FuncFormatter
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+import time
 
+# ============================ Paths & timer ============================
+start_time = time.time()
+
+THIS_DIR = Path(__file__).resolve().parent
+PLOT_DIR = THIS_DIR / "Plots" / "VarianceScenario"
+PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 # fetch dataset 
 real_estate_valuation = fetch_ucirepo(id=477) 
@@ -407,15 +415,18 @@ def _add_axis_arrows(ax, lw=2.5):
     )
 def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
     """
-    Save figure with consistent canvas size (no auto-tight cropping).
+    Save figure with consistent canvas size (no auto-tight cropping),
+    always under Plots/VarianceScenario.
     """
     fig.set_size_inches(width, height)
+    out_path = PLOT_DIR / filename  
     fig.savefig(
-        filename,
+        out_path,
         dpi=dpi,
-        bbox_inches=None,     
-        pad_inches=0.1        
+        bbox_inches=None,
+        pad_inches=0.1
     )
+
 
 def run_monte_carlo(strategy_function, num_iterations, x, y, phi, B, eta_j_list, price_model, test_size=0.7):
     results = []
@@ -511,7 +522,7 @@ rsc_monte_carlo_results = run_monte_carlo(
 # QBCAL Monte Carlo
 qbcal_monte_carlo_results = run_monte_carlo(
     qbc_active_learning, num_iterations, x, y,
-    phi=phi, B=B,eta_j_list = eta_j_list,price_model='SC'
+    phi=phi, B=B,eta_j_list = eta_j_list,price_model='BC'
 )
 
 
@@ -558,7 +569,7 @@ rsc_monte_carlo_results = run_monte_carlo(
 # QBCAL Monte Carlo
 qbcal_monte_carlo_results = run_monte_carlo(
     qbc_active_learning, num_iterations, x, y,
-    phi=phi, B=B,eta_j_list = eta_j_list,price_model='BC'
+    phi=phi, B=B,eta_j_list = eta_j_list,price_model='SC'
 )
 
 plot_monte_carlo_histogram(
@@ -587,3 +598,9 @@ plot_monte_carlo_histogram(
     filename="1_qbcal_monte_carlo_histogram_SC.pdf",
     ylim = (0,500)
 )
+
+# ============================ Total runtime ============================
+end_time = time.time()
+print("\n===================================")
+print(f"Total runtime: {end_time - start_time:.2f} seconds")
+print("===================================\n")
