@@ -10,10 +10,23 @@ This script reproduces the following results in the paper:
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
-from matplotlib.ticker import FuncFormatter
 import matplotlib.pyplot as plt
 import pandas as pd
 import glob
+from pathlib import Path
+import time
+from matplotlib.ticker import MaxNLocator
+
+
+# ============================ Paths & timer ============================
+start_time = time.time()
+
+THIS_DIR = Path(__file__).resolve().parent
+PLOT_DIR = THIS_DIR / "Plots" / "MSEScenario"
+PLOT_DIR.mkdir(parents=True, exist_ok=True)
+
+DATA_DIR = THIS_DIR / "data" / "Hog_buildings"
+
 
 # Load data from the dataset directory
 def load_data(path, postfix, choose=None):
@@ -57,7 +70,7 @@ def construct_dataset(df):
 
 def Algorithm(choose):
     # np.random.seed(seed)
-    path_in = '/Users/xiwen/xiwen_algorithm/IJDS/IJDS_building_dataset/Hog_buildings/'
+    path_in = str(DATA_DIR) + "/" 
     df_list = load_data(path=path_in, postfix='*.csv', choose=choose)
     
     if len(df_list) != 2:
@@ -443,15 +456,18 @@ def _add_axis_arrows(ax, lw=2.5):
     )
 def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
     """
-    Save figure with consistent canvas size (no auto-tight cropping).
+    Save figure with consistent canvas size (no auto-tight cropping),
+     always under Plots/MSEscenario.
     """
     fig.set_size_inches(width, height)
+    out_path = PLOT_DIR / filename
     fig.savefig(
-        filename,
+        out_path,
         dpi=dpi,
-        bbox_inches=None,     
-        pad_inches=0.1        
+        bbox_inches=None,
+        pad_inches=0.1
     )
+
 
 def run_monte_carlo(strategy_function, num_iterations, choose, phi, B, eta_j_list, price_model):
     results = []
@@ -496,10 +512,6 @@ qbcal_monte_carlo_results = run_monte_carlo(
     phi=phi, B=B, eta_j_list=eta_j_list, price_model='BC'
 )
 
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.ticker import MaxNLocator
 
 def plot_monte_carlo_histogram(results, xlabel, ylabel, filename, ylim):
     """
@@ -619,3 +631,10 @@ plot_monte_carlo_histogram(
     filename="2_qbcal_monte_carlo_histogram_sc.pdf",
     ylim = (0,200)
 )
+
+# ============================ Total runtime ============================
+end_time = time.time()
+print("\n===================================")
+print(f"Total runtime: {(end_time - start_time) / 60:.2f} minutes")
+print("===================================\n")
+
