@@ -30,6 +30,7 @@ from mpl_toolkits.axisartist.axislines import AxesZero
 from mpl_toolkits.axisartist import SubplotZero
 from pathlib import Path
 import time
+
 start_time = time.time()
 # Base directories (repo-relative, reproducible on any machine)
 THIS_DIR = Path(__file__).resolve().parent
@@ -1482,8 +1483,6 @@ print(output_dir)
 
 end_time = time.time()
 print("\n===================================")
-print(f"Total runtime: {end_time - start_time:.2f} seconds")
+print(f"Total runtime: {(end_time - start_time) / 60:.2f} minutes")
 print("===================================\n")
-
-
 
