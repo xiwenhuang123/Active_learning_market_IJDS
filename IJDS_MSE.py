@@ -21,15 +21,19 @@ import pandas as pd
 import glob
 from matplotlib.ticker import MaxNLocator
 from pathlib import Path
+import time
 
 
-# Resolve project directory (works for both .py and Jupyter)
-if "__file__" in globals():
-    THIS_DIR = Path(__file__).resolve().parent
-else:
-    THIS_DIR = Path(os.getcwd()).resolve()
+# ============================ Paths & timer ============================
+start_time = time.time()
+
+THIS_DIR = Path(__file__).resolve().parent
+PLOT_DIR = THIS_DIR / "Plots" / "MSEScenario"
+PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 DATA_DIR = THIS_DIR / "data" / "Hog_buildings"
+
+
 
 # Load data from the dataset directory
 def load_data(path, postfix, choose=None):
@@ -449,19 +453,22 @@ def _add_axis_arrows(ax, lw=2.5):
 
 def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
     """
-    Save figure with consistent canvas size (no auto-tight cropping).
+    Save figure with consistent canvas size (no auto-tight cropping),
+    always under Plots/MSEScenario.
     """
     fig.set_size_inches(width, height)
+    out_path = PLOT_DIR / filename
     fig.savefig(
-        filename,
+        out_path,
         dpi=dpi,
-        bbox_inches=None,     
-        pad_inches=0.1        
+        bbox_inches=None,
+        pad_inches=0.1
     )
+
 
 # ======================== Produces a reference-only mse reduction plot (not included in the paper) ========================
 def plot_mse_reduction_comparison(vb_data_bought, vb_mse_list, rsc_data_bought, rsc_mse_list, qbc_data_bought, qbc_mse_list, filename):
-    plt.figure(figsize=(14, 12))
+    fig, ax = plt.subplots(figsize=(14, 12))
     plt.plot(vb_data_bought, vb_mse_list,  marker='o', label='VBAL', color='#d62728', 
             linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
     plt.plot(qbc_data_bought, qbc_mse_list, marker='s', label='QBCAL', color='#2ca02c',
@@ -481,11 +488,11 @@ def plot_mse_reduction_comparison(vb_data_bought, vb_mse_list, rsc_data_bought, 
     ax.spines['right'].set_visible(False)
     plt.tight_layout()
     plt.grid(False)
-    plt.savefig(filename)
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
     
 def plot_budget_utilization_comparison(vb_data_bought, vb_budget_list, rsc_data_bought, rsc_budget_list, qbc_data_bought, qbc_budget_list, filename):
-    plt.figure(figsize=(14, 12))
+    fig, ax = plt.subplots(figsize=(14, 12))
     plt.plot(vb_data_bought, vb_budget_list, 
              marker='o', label='VBAL', color='#d62728', 
             linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
@@ -509,7 +516,7 @@ def plot_budget_utilization_comparison(vb_data_bought, vb_budget_list, rsc_data_
     ax.spines['right'].set_visible(False)
     plt.tight_layout()
     plt.grid(False)
-    plt.savefig(filename)
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
  
 
@@ -686,13 +693,8 @@ def plot_percentage_mse_reduction_comparison(
     # leave padding so arrowheads aren't cropped
     plt.subplots_adjust(left=0.075, right=0.988, top=0.93, bottom=0.15)
 
-    fig.set_size_inches(14, 12)
-    fig.savefig(
-        filename,
-        dpi=300,
-        bbox_inches='tight',
-        pad_inches=0.0
-    )
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
+
 
     plt.show()
 
@@ -801,14 +803,7 @@ def plot_sorted_price_bar_chart_with_sc(
     # Axis arrows
     _add_axis_arrows(ax, lw=2.5)
     plt.subplots_adjust(left=0.075, right=0.988, top=0.93, bottom=0.15)
-
-    fig.set_size_inches(14, 12)
-    fig.savefig(
-        filename,
-        dpi=300,
-        bbox_inches='tight',
-        pad_inches=0.0
-    )    
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
 # Calculate the global min and max y-axis values
@@ -1030,7 +1025,7 @@ plot_sensitivity_to_wts_scale_mse(
 # =====Generates Figures 14e and 14f in the paper ======
 def purchases_vs_budget_mse(B_list, price_model="BC", phi=50):
     vbal_counts, qbcal_counts, rsc_counts = [], [], []
-     # fixed split
+    # fixed split
     choose2 = ['Hog_education_Madge', 'Hog_education_Rachael']
     x_lab, x_unlab, y_lab, y_unlab, x_val, y_val = Algorithm(choose2, data_seed=data_seed)
 
@@ -1229,6 +1224,22 @@ print(df_b_bc.round(2))
 
 print("\n=== Sensitivity on Budget (B) — Seller-Centric ===")
 print(df_b_sc.round(2))
+
+RESULT_DIR = THIS_DIR / "Plots" / "Sensitivity_Results"
+RESULT_DIR.mkdir(parents=True, exist_ok=True)
+
+df_wtp_bc.to_csv(RESULT_DIR / "table6_wtp_BC.csv", index=False)
+df_wtp_sc.to_csv(RESULT_DIR / "table6_wtp_SC.csv", index=False)
+df_wts_bc.to_csv(RESULT_DIR / "table7_wts_BC.csv", index=False)
+df_wts_sc.to_csv(RESULT_DIR / "table7_wts_SC.csv", index=False)
+df_b_bc.to_csv(RESULT_DIR / "table7_budget_BC.csv", index=False)
+df_b_sc.to_csv(RESULT_DIR / "table7_budget_SC.csv", index=False)
+
+# ============================ Total runtime ============================
+end_time = time.time()
+print("\n===================================")
+print(f"Total runtime: {(end_time - start_time) / 60:.2f} minutes")
+print("===================================\n")
 
 
 # # ===============================
