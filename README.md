@@ -65,24 +65,36 @@ To run the experiments:
 
 ---
 
-## Development environment setup
+## Reproducibility Instructions
 
-This project uses **Python 3.11.7**.  
-It is recommended to create a virtual environment to ensure consistent dependencies.
+To reproduce all experiments:
 
-If using Conda:
+1. **Clone this repository**
+   ```bash
+   git clone https://github.com/xiwenhuang123/Active_learning_market_IJDS.git
+   cd Active_learning_market_IJDS
 
-```bash
-# Create a new conda environment with Python 3.11.7
-conda create -n project_env python=3.11.7
-
-# Activate the environment
-conda activate project_env
-```
-Then install all dependencies:
-```
-pip install -r requirements.txt
-```
+2. **Create and activate the environment**
+   This project uses **Python 3.11.7**.  
+   It is recommended to create a virtual environment to ensure consistent dependencies.
+   If using Conda:
+   ```bash
+   # Create a new conda environment with Python 3.11.7
+   conda create -n project_env python=3.11.7
+   # Activate the environment
+   conda activate project_env
+   ```
+3. **Install dependencies**
+   ```
+   pip install -r requirements.txt
+   ```
+4. **Run experiments**
+   ```
+   python IJDS_Variance.py
+   python IJDS_MSE.py
+   python Monte_carlo_variance_scenario.py
+   python Monte_carlo_MSE_scenario.py
+   ```
 
 For any inquiries, please contact:
 📧 xiwen.huang23@ic.ac.uk
