@@ -602,5 +602,5 @@ plot_monte_carlo_histogram(
 # ============================ Total runtime ============================
 end_time = time.time()
 print("\n===================================")
-print(f"Total runtime: {end_time - start_time:.2f} seconds")
+print(f"Total runtime: {(end_time - start_time) / 60:.2f} minutes")
 print("===================================\n")
