@@ -1016,6 +1016,21 @@ seeds = list(range(R))
 avgcost_BC_VBAL, avgcost_BC_QBCAL, avgcost_BC_RSC = [], [], []
 avgcost_SC_VBAL, avgcost_SC_QBCAL, avgcost_SC_RSC = [], [], []
 
+print("\n===============================\nExecuting Monte-Carlo runs...\n")
+for s in seeds:
+    # Buyer-centric
+    _, _, _, v_bc, q_bc, r_bc = run_one_split(s, price_model='BC')
+    avgcost_BC_VBAL.append(v_bc)
+    avgcost_BC_QBCAL.append(q_bc)
+    avgcost_BC_RSC.append(r_bc)
+
+    # Seller-centric
+    _, _, _, v_sc, q_sc, r_sc = run_one_split(s, price_model='SC')
+    avgcost_SC_VBAL.append(v_sc)
+    avgcost_SC_QBCAL.append(q_sc)
+    avgcost_SC_RSC.append(r_sc)
+
+
 # Create output directory for Wilcoxon results
 wilcoxon_dir = THIS_DIR / "Plots" / "VarianceScenario"
 wilcoxon_dir.mkdir(parents=True, exist_ok=True)
