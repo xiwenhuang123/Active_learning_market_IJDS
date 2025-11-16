@@ -28,7 +28,12 @@ from scipy.stats import wilcoxon
 from matplotlib.ticker import MaxNLocator
 from mpl_toolkits.axisartist.axislines import AxesZero
 from mpl_toolkits.axisartist import SubplotZero
+from pathlib import Path
 
+# Base directories (repo-relative, reproducible on any machine)
+THIS_DIR = Path(__file__).resolve().parent
+PLOT_DIR = THIS_DIR / "Plots" / "VarianceScenario"
+PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -443,17 +448,21 @@ def _add_axis_arrows(ax, lw=2.5):
         ),
         clip_on=False
     )
+
 def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
     """
-    Save figure with consistent canvas size (no auto-tight cropping).
+    Save figure with consistent canvas size (no auto-tight cropping),
+    always under Plots/VarianceScenario.
     """
     fig.set_size_inches(width, height)
+    out_path = PLOT_DIR / filename  
     fig.savefig(
-        filename,
+        out_path,
         dpi=dpi,
-        bbox_inches=None,     
-        pad_inches=0.1        
+        bbox_inches=None,
+        pad_inches=0.1
     )
+
 
 def compute_improvement_list(var_list):
     """
@@ -795,14 +804,9 @@ def plot_percentage_variance_reduction_comparison(
     _add_axis_arrows(ax, lw=2.5)
     # leave padding so arrowheads aren't cropped
     plt.subplots_adjust(left=0.075, right=0.988, top=0.93, bottom=0.15)
-    fig.set_size_inches(14, 12)
-    fig.savefig(
-        filename,
-        dpi=300,
-        bbox_inches='tight',
-        pad_inches=0.0
-    )
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
+
 
 plot_percentage_variance_reduction_comparison(
     vb_BC_price_list, vb_BC_var_list,
@@ -1012,44 +1016,48 @@ seeds = list(range(R))
 avgcost_BC_VBAL, avgcost_BC_QBCAL, avgcost_BC_RSC = [], [], []
 avgcost_SC_VBAL, avgcost_SC_QBCAL, avgcost_SC_RSC = [], [], []
 
-print("\n===============================\nExecuting Monte-Carlo runs...\n")
+# Create output directory for Wilcoxon results
+wilcoxon_dir = THIS_DIR / "Plots" / "VarianceScenario"
+wilcoxon_dir.mkdir(parents=True, exist_ok=True)
+wilcoxon_file = wilcoxon_dir / "Wilcoxon_results.txt"
 
-for s in seeds:
-    # BC
-    _, _, _, v_bc, q_bc, r_bc = run_one_split(s, price_model='BC')
-    avgcost_BC_VBAL.append(v_bc)
-    avgcost_BC_QBCAL.append(q_bc)
-    avgcost_BC_RSC.append(r_bc)
+with open(wilcoxon_file, "w") as f:
 
-    # SC
-    _, _, _, v_sc, q_sc, r_sc = run_one_split(s, price_model='SC')
-    avgcost_SC_VBAL.append(v_sc)
-    avgcost_SC_QBCAL.append(q_sc)
-    avgcost_SC_RSC.append(r_sc)
+    f.write("\n===============================\n")
+    f.write("Paired Wilcoxon Test Results\n")
+    f.write("===============================\n\n")
 
-print("\n===============================\nPaired Wilcoxon Test Results\n===============================\n")
+    def paired_wilcoxon(vec_a, vec_b, label_a, label_b, scheme):
+        a = np.asarray(vec_a)
+        b = np.asarray(vec_b)
+        mask = ~np.isnan(a) & ~np.isnan(b)
+        a = a[mask]
+        b = b[mask]
+        if len(a) == 0:
+            line = f"{scheme}: Not enough valid runs for {label_a} vs {label_b}\n"
+            f.write(line)
+            print(line)
+            return
+        
+        stat, p = wilcoxon(a, b, alternative='two-sided', zero_method='wilcox')
+        median_diff = float(np.median(a - b))
 
-def paired_wilcoxon(vec_a, vec_b, label_a, label_b, scheme):
-    a = np.asarray(vec_a)
-    b = np.asarray(vec_b)
-    mask = ~np.isnan(a) & ~np.isnan(b)
-    a = a[mask]
-    b = b[mask]
-    if len(a) == 0:
-        print(f"{scheme}: Not enough valid runs for {label_a} vs {label_b}")
-        return
-    stat, p = wilcoxon(a, b, alternative='two-sided', zero_method='wilcox')
-    median_diff = float(np.median(a - b))
-    print(f"{scheme}: {label_a} vs {label_b}\n"
-          f"   W={stat}, p-value={p:.4g}, median Δ={median_diff:.3f} runs=(n={len(a)})")
+        line = (
+            f"{scheme}: {label_a} vs {label_b}\n"
+            f"   W={stat}, p-value={p:.4g}, median Δ={median_diff:.3f} (n={len(a)})\n\n"
+        )
 
-# Print all BC + SC comparisons
-paired_wilcoxon(avgcost_BC_VBAL,  avgcost_BC_RSC,   'VBAL',  'RSC', 'BC')
-paired_wilcoxon(avgcost_BC_QBCAL, avgcost_BC_RSC,   'QBCAL', 'RSC', 'BC')
-paired_wilcoxon(avgcost_SC_VBAL,  avgcost_SC_RSC,   'VBAL',  'RSC', 'SC')
-paired_wilcoxon(avgcost_SC_QBCAL, avgcost_SC_RSC,   'QBCAL', 'RSC', 'SC')
+        f.write(line)
+        print(line)
 
-print("\n===============================\nDone ✅")
+    # Run tests and save results
+    paired_wilcoxon(avgcost_BC_VBAL,  avgcost_BC_RSC, 'VBAL', 'RSC', 'BC')
+    paired_wilcoxon(avgcost_BC_QBCAL, avgcost_BC_RSC, 'QBCAL','RSC', 'BC')
+    paired_wilcoxon(avgcost_SC_VBAL,  avgcost_SC_RSC, 'VBAL', 'RSC', 'SC')
+    paired_wilcoxon(avgcost_SC_QBCAL, avgcost_SC_RSC, 'QBCAL','RSC', 'SC')
+
+print("\nWilcoxon results saved to:", wilcoxon_file)
+print("===============================\nDone ✅")
 
 
 # ============================================================ Generate Figure 9  in the paper ============================================================
@@ -1435,4 +1443,24 @@ print("\n=== Sensitivity on Budget (B) — Buyer-Centric ===")
 print(df_b_bc.round(2))
 print("\n=== Sensitivity on Budget (B) — Seller-Centric ===")
 print(df_b_sc.round(2))
+# === Save sensitivity analysis results ===
+sensitivity_results = {
+    "WTP_BC": df_wtp_bc,
+    "WTP_SC": df_wtp_sc,
+    "WTS_BC": df_wts_bc,
+    "WTS_SC": df_wts_sc,
+    "Budget_BC": df_b_bc,
+    "Budget_SC": df_b_sc,
+}
+
+# Create output directory
+output_dir = THIS_DIR / "Plots" / "Sensitivity_Results"
+output_dir.mkdir(parents=True, exist_ok=True)
+
+# Save each table as CSV
+for name, df in sensitivity_results.items():
+    df.to_csv(output_dir / f"{name}.csv", index=False)
+
+print("\nSensitivity analysis tables saved to:")
+print(output_dir)
 
