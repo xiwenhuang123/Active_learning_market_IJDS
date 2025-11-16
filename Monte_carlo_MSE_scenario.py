@@ -1,9 +1,12 @@
 """
-MSE-dependent scenario with Monte-Carlo simulation
-@author: Xiwen Huang
-"""
+Predictive-ability-focused scenario (building energy case study).
+Author: Xiwen Huang
 
-# MSE-dependent scenario: figures, monte-carlo
+This script reproduces the following results in the paper:
+- Figure 12
+- Figure 13
+
+"""
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error
@@ -54,7 +57,7 @@ def construct_dataset(df):
 
 def Algorithm(choose):
     # np.random.seed(seed)
-    path_in = './Hog_buildings/'
+    path_in = '/Users/xiwen/xiwen_algorithm/IJDS/IJDS_building_dataset/Hog_buildings/'
     df_list = load_data(path=path_in, postfix='*.csv', choose=choose)
     
     if len(df_list) != 2:
@@ -190,13 +193,13 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, x_val
         model = LinearRegression().fit(x_temp_labelled, y_temp_labelled)
         new_mse = fit_model_and_compute_mse(model, x_validated, y_validated)
         l_j = previous_mse - new_mse
-        eta_j = eta_j_list[max_variance_index]
+        this_eta = eta_j[max_variance_index] 
 
         # Compute the price of the data point
-        p_j = phi * l_j if price_model == 'BC' else eta_j
+        p_j = phi * l_j if price_model == 'BC' else this_eta
 
         # Check purchase conditions
-        if l_j > 0 and phi >= eta_j/l_j:
+        if l_j > 0 and phi >= this_eta/l_j:
             # Purchase the data point
             cumulative_budget += p_j
             cumulative_mse_reduction += l_j
@@ -271,13 +274,13 @@ def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_u
         # Retrain the model with the new data
         new_mse = fit_model_and_compute_mse(model, x_validated, y_validated)
         l_j = previous_mse - new_mse
-        eta_j = eta_j_list[random_idx]
+        this_eta = eta_j[random_idx]
        
 # Pricing model
         if price_model == 'BC':
             if l_j > 0: 
                 p_j = phi * l_j
-                if p_j <= eta_j:
+                if p_j <= this_eta:
                     # print(f"Iteration {iteration}:  p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f}), Skip.")
                     x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
                     y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
@@ -285,7 +288,7 @@ def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_u
             else:
                 p_j = 0
         else:
-            p_j = eta_j
+            p_j = this_eta
 
         cumulative_budget += p_j
         cumulative_budget_list.append(cumulative_budget)
@@ -359,9 +362,9 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, x_va
         model = LinearRegression().fit(x_temp_labelled, y_temp_labelled)
         new_mse = fit_model_and_compute_mse(model, x_validated, y_validated)
         l_j = previous_mse - new_mse
-        eta_j = eta_j_list[max_variance_index]
+        this_eta = eta_j[max_variance_index] 
 
-        if l_j <= 0 or eta_j / l_j > phi:
+        if l_j <= 0 or this_eta/ l_j > phi:
             x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
             y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
             continue
@@ -373,7 +376,7 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, x_va
         cumulative_mse_reduction += l_j
         data_bought_number += 1
 
-        p_j = phi * l_j if price_model =='BC' else eta_j
+        p_j = phi * l_j if price_model =='BC' else this_eta
         cumulative_budget += p_j
         previous_mse = new_mse
         mse_list.append(new_mse)
@@ -403,6 +406,52 @@ B = 1200
 eta_j_list = np.full(x_unlabelled.shape[0],30)
 
 
+def _add_axis_arrows(ax, lw=2.5):
+    """
+    Draws arrowheads for x→ and y↑ using axes-fraction coordinates.
+    Keeps bottom/left spines so ticks align with axes.
+    Arrow length/position is visually consistent across plots.
+    """
+    # x-axis arrow (→), from about 90% width to 106% width along bottom
+    ax.annotate(
+        '',
+        xy=(1.07, 0.0),         # arrow tip (slightly outside)
+        xycoords='axes fraction',
+        xytext=(1.0, 0.0),     # tail (also outside)
+        arrowprops=dict(
+            arrowstyle='-|>,head_width=0.6,head_length=1.0',
+            lw=lw,
+            color='black'
+        ),
+        clip_on=False
+    )
+
+    # Y-axis arrow ↑
+    # Both xytext and xy are ABOVE the axis box (y > 1),
+    # same x (0). Again: short stub just outside.
+    ax.annotate(
+        '',
+        xy=(0.0, 1.07),         # arrow tip (slightly above)
+        xycoords='axes fraction',
+        xytext=(0.0, 1.0),     # tail (also above)
+        arrowprops=dict(
+            arrowstyle='-|>,head_width=0.6,head_length=1.0',
+            lw=lw,
+            color='black'
+        ),
+        clip_on=False
+    )
+def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
+    """
+    Save figure with consistent canvas size (no auto-tight cropping).
+    """
+    fig.set_size_inches(width, height)
+    fig.savefig(
+        filename,
+        dpi=dpi,
+        bbox_inches=None,     
+        pad_inches=0.1        
+    )
 
 def run_monte_carlo(strategy_function, num_iterations, choose, phi, B, eta_j_list, price_model):
     results = []
@@ -448,34 +497,58 @@ qbcal_monte_carlo_results = run_monte_carlo(
 )
 
 
-def plot_monte_carlo_histogram(results, xlabel, ylabel, filename, ylim):
-    plt.figure(figsize=(14, 12))
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
-    # Determine the range and bins for the histogram
+def plot_monte_carlo_histogram(results, xlabel, ylabel, filename, ylim):
+    """
+    Plot histogram with consistent style and automatic axis handling.
+    - VBAL & QBCAL share the same x-axis range (1–30)
+    - RSC uses its own full range
+    - Automatically uses integer tick marks
+    """
+    fig, ax = plt.subplots(figsize=(14, 12))
+
+    # Compute histogram bins
     min_value = min(results)
     max_value = max(results)
-    bins = range(min_value, max_value + 2)  # Bins for integer values
+    bins = range(min_value, max_value + 2)
 
-    # Plot the histogram with bins
-    counts, edges, patches = plt.hist(results, bins=bins, alpha=0.7, color='blue', edgecolor='black', align='left')
+    # Plot histogram
+    ax.hist(results, bins=bins, alpha=0.7, color='blue',
+            edgecolor='black', align='left')
 
-    # Filter x-ticks to only show bins with non-zero counts
-    num_ticks = min(5, max_value - min_value + 1)  # Limit to 10 ticks at most
-    xtick_indices = np.linspace(min_value, max_value, num=num_ticks, endpoint=True, dtype=int)
-    plt.xticks(xtick_indices, fontsize=48)
-    plt.yticks(fontsize=48)
-    plt.ylim(ylim)
+    # 
+    # -----------------------------------
+    if 'rsc' in filename.lower():
+        ax.set_xlim(min_value, max_value)
+    else:
+        ax.set_xlim(1, 35)
 
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
-    # Set titles and labels
-    plt.xlabel(xlabel, fontsize=50)
-    plt.ylabel(ylabel, fontsize=50)
-    plt.grid(False)
-    ax = plt.gca()
-    ax.spines ['top'].set_visible(False)
+    # -----------------------------------
+    ax.xaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
+    ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=48)
+    ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=48)
+
+    ax.set_xlabel(xlabel, fontsize=50)
+    ax.set_ylabel(ylabel, fontsize=50)
+    ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    plt.tight_layout()
-    plt.savefig(filename)
+    ax.spines['bottom'].set_linewidth(2.5)
+    ax.spines['left'].set_linewidth(2.5)
+    ax.grid(False)
+
+    # arrow
+    _add_axis_arrows(ax, lw=2.5)
+
+    # save
+    plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
 
@@ -494,7 +567,7 @@ plot_monte_carlo_histogram(
     xlabel="Number of purchased data points",
     ylabel="Frequency",
     filename="2_rsc_monte_carlo_histogram.pdf",
-    ylim = (0,100)
+    ylim = (0,200)
 )
 
 plot_monte_carlo_histogram(
@@ -535,7 +608,7 @@ plot_monte_carlo_histogram(
     xlabel="Number of purchased data points",
     ylabel="Frequency",
     filename="2_rsc_monte_carlo_histogram_sc.pdf",
-    ylim = (0,100)
+    ylim = (0,200)
 
 )
 
