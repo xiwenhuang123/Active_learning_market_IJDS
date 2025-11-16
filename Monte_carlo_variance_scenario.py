@@ -1,10 +1,12 @@
 """
-Variance-dependent scenario with Monte-Carlo simulation
-@author: Xiwen Huang
-"""
+Estimation-quality-focused scenario (real-estate valuation case study).
+Author: Xiwen Huang
 
-# variance-dependent scenario:  monte-carlo
-# Compare VBAL, QBCAL and RSC
+This script reproduces the following results in the paper:
+- Figures 7
+- Figures 8
+
+"""
 from ucimlrepo import fetch_ucirepo 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
@@ -363,10 +365,57 @@ feature_columns = ['X1 transaction date', 'X2 house age', 'X3 distance to the ne
 # Generate eta_j values based on distance to MRT only
 eta_j_list = generate_eta_j(x_unlabelled, feature_columns) 
 
+
 # Example execution for three strategies
 phi = 1200
 B = 15
 
+def _add_axis_arrows(ax, lw=2.5):
+    """
+    Draws arrowheads for x→ and y↑ using axes-fraction coordinates.
+    Keeps bottom/left spines so ticks align with axes.
+    Arrow length/position is visually consistent across plots.
+    """
+    # x-axis arrow (→), from about 90% width to 106% width along bottom
+    ax.annotate(
+        '',
+        xy=(1.07, 0.0),         # arrow tip (slightly outside)
+        xycoords='axes fraction',
+        xytext=(1.0, 0.0),     # tail (also outside)
+        arrowprops=dict(
+            arrowstyle='-|>,head_width=0.6,head_length=1.0',
+            lw=lw,
+            color='black'
+        ),
+        clip_on=False
+    )
+
+    # Y-axis arrow ↑
+    # Both xytext and xy are ABOVE the axis box (y > 1),
+    # same x (0). Again: short stub just outside.
+    ax.annotate(
+        '',
+        xy=(0.0, 1.07),         # arrow tip (slightly above)
+        xycoords='axes fraction',
+        xytext=(0.0, 1.0),     # tail (also above)
+        arrowprops=dict(
+            arrowstyle='-|>,head_width=0.6,head_length=1.0',
+            lw=lw,
+            color='black'
+        ),
+        clip_on=False
+    )
+def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
+    """
+    Save figure with consistent canvas size (no auto-tight cropping).
+    """
+    fig.set_size_inches(width, height)
+    fig.savefig(
+        filename,
+        dpi=dpi,
+        bbox_inches=None,     
+        pad_inches=0.1        
+    )
 
 def run_monte_carlo(strategy_function, num_iterations, x, y, phi, B, eta_j_list, price_model, test_size=0.7):
     results = []
@@ -400,35 +449,47 @@ def run_monte_carlo(strategy_function, num_iterations, x, y, phi, B, eta_j_list,
 
 
 def plot_monte_carlo_histogram(results, xlabel, ylabel, filename, ylim):
-    plt.figure(figsize=(14, 12))
-
     # Determine the range and bins for the histogram
-    min_value = min(results)
-    max_value = max(results)
-    bins = range(min_value, max_value + 2)  # Bins for integer values
+    fig, ax = plt.subplots(figsize=(14, 12))
 
-    # Plot the histogram with bins
-    counts, edges, patches = plt.hist(results, bins=bins, alpha=0.7, color='blue', edgecolor='black', align='left')
+    # Determine histogram range and bins
+    min_value = int(min(results))
+    max_value = int(max(results))
+    bins = range(min_value, max_value + 2)  # bins for integer values
 
-    # Filter x-ticks to only show bins with non-zero counts
-    num_ticks = min(5, max_value - min_value + 1)  # Limit to 10 ticks at most
+    # Plot histogram
+    counts, edges, patches = ax.hist(
+        results, bins=bins, alpha=0.7, color='blue', edgecolor='black', align='left'
+    )
+
+    # Configure x-ticks (limit to ~5 to avoid overlap)
+    num_ticks = min(5, max_value - min_value + 1)
     xtick_indices = np.linspace(min_value, max_value, num=num_ticks, endpoint=True, dtype=int)
-    plt.xticks(xtick_indices, fontsize=48)
-    plt.yticks(fontsize=48)
-    plt.ylim(ylim)
+    ax.set_xticks(xtick_indices)
+    ax.set_xticklabels([str(x) for x in xtick_indices], fontsize=48)
 
+    # Configure y-ticks and limits
+    ax.set_ylim(ylim)
+    ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=48)
+    ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=48)
 
-    # Set titles and labels
-    plt.xlabel(xlabel, fontsize=50)
-    plt.ylabel(ylabel, fontsize=50)
-    plt.grid(False)
-    ax = plt.gca()
-    ax.spines ['top'].set_visible(False)
+    # Labels
+    ax.set_xlabel(xlabel, fontsize=50)
+    ax.set_ylabel(ylabel, fontsize=50)
+
+    # Clean up axes
+    ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    plt.tight_layout()
-    # Save and display the plot
-    plt.savefig(filename)
+    ax.spines['bottom'].set_linewidth(2.5)
+    ax.spines['left'].set_linewidth(2.5)
+    ax.grid(False)
+
+    # Add arrowheads
+    _add_axis_arrows(ax, lw=2.5)
+    plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
+    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
+
 
 
 # Monte Carlo simulation for each strategy
@@ -470,7 +531,7 @@ plot_monte_carlo_histogram(
     xlabel="Number of purchased data points",
     ylabel="Frequency",
     filename="1_rsc_monte_carlo_histogram.pdf",
-    ylim = (0,150)
+    ylim = (0,500)
 )
 
 plot_monte_carlo_histogram(
@@ -515,7 +576,7 @@ plot_monte_carlo_histogram(
     xlabel="Number of purchased data points",
     ylabel="Frequency",
     filename="1_rsc_monte_carlo_histogram_SC.pdf",
-    ylim = (0,150)
+    ylim = (0,500)
 )
 
 plot_monte_carlo_histogram(
