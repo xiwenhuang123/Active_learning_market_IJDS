@@ -30,7 +30,11 @@ from mpl_toolkits.axisartist.axislines import AxesZero
 from mpl_toolkits.axisartist import SubplotZero
 from pathlib import Path
 import time
+import sys
+from pathlib import Path
 
+if '__file__' not in globals():
+    __file__ = str(Path.cwd() / "IJDS_Variance.py")
 start_time = time.time()
 # Base directories (repo-relative, reproducible on any machine)
 THIS_DIR = Path(__file__).resolve().parent
@@ -111,7 +115,7 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
     var_list = []
     data_bought_number_list = []
     cumulative_budget_list = []
-    data_bought_number_list.append(data_bought_number) 
+    data_bought_number_list.append(data_bought_number)
     cumulative_budget_list.append(cumulative_budget)
     price_list = []
     iteration = 0
@@ -149,41 +153,52 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
         variance_reduction = previous_variance - new_variance
         eta_j = eta_j_list[max_variance_index]
 
-        # Willingness to sell and pay comparison
+        # bad case: no useful or not worth it
         if variance_reduction <= 0 or eta_j / variance_reduction > phi:
-            # print(f"Iteration {iteration}: insufficient variance reduction, skip.")
+            if price_model == 'BC':
+                p_j = 0.0
+            else:   # SC
+                p_j = eta_j
+
+            cumulative_budget += p_j   # always pay something in SC, pay 0 in BC
+            cumulative_budget_list.append(cumulative_budget)
+            price_list.append(p_j)
+            var_list.append(previous_variance)
+            data_bought_number+=1
+            data_bought_number_list.append(data_bought_number)
+
             x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
             y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
             continue
 
-        # Pricing model
+        # good case: variance_reduction > 0 and eta_j / variance_reduction <= phi
         if price_model == 'BC':
             p_j = phi * variance_reduction
-            if p_j <= eta_j:
-                # print(f"Iteration {iteration}:  p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f}), Skip.")
-                x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
-                y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
-                continue
         else:
             p_j = eta_j
 
-        # Update the labeled set and budget
+        # update labelled set and budget
         x_labelled = x_temp_labelled
         y_labelled = y_temp_labelled
         previous_variance = new_variance
         cumulative_var_reduction += variance_reduction
+
         cumulative_budget += p_j
+        cumulative_budget_list.append(cumulative_budget)
         data_bought_number += 1
         data_bought_number_list.append(data_bought_number)
-
-        # Logging the result of this iteration
-        print(f"Iteration {iteration}: Data bought number: {data_bought_number}, Selected seller: {max_variance_index}, Variance Reduction: {variance_reduction:.6f}, New Variance: {new_variance:.6f}, Price: {p_j:.6f}, Cumulative Budget: {cumulative_budget:.6f}")
-
-        # Record the results
-        var_list.append(new_variance)
-        cumulative_budget_list.append(cumulative_budget)
         price_list.append(p_j)
         selected_sellers.append(max_variance_index)
+        var_list.append(new_variance)
+
+        print(
+            f"Iteration {iteration}: Data bought number: {data_bought_number}, "
+            f"Selected seller: {max_variance_index}, Variance Reduction: {variance_reduction:.6f}, "
+            f"New Variance: {new_variance:.6f}, Price: {p_j:.6f}, "
+            f"Cumulative Budget: {cumulative_budget:.6f}"
+        )
+
+
 
         # Check stopping criteria
         if cumulative_budget >= B or new_variance <= alpha:
@@ -198,10 +213,10 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
 
 
 # Random sampling corrected strategy 
-def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, eta_j, B, alpha, price_model, rsc_seed):
+def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, eta_j_list, B, alpha, price_model, rsc_seed=None):
     cumulative_var_reduction = 0
     cumulative_budget = 0
-    var_list = []
+    var_list = [initial_variance]
     data_bought_number = 0
     data_bought_number_list = []
     cumulative_budget_list = []
@@ -209,14 +224,14 @@ def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_u
     iteration = 0
     selected_sellers = []
 
-    var_list.append(initial_variance)
     print(f"RSC initial variance: {initial_variance:.6f},  Budget Limit = {B}, variance Threshold = {alpha}")
     data_bought_number_list.append(data_bought_number)
     cumulative_budget_list.append(cumulative_budget)
     previous_var = initial_variance
 
     # Set seed for reproducibility
-    np.random. seed(rsc_seed)
+    if rsc_seed is not None:
+        np.random.seed(rsc_seed)
 
     while cumulative_budget < B and initial_variance - cumulative_var_reduction > alpha:
         iteration += 1
@@ -243,27 +258,24 @@ def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_u
 
         # Pricing model
         if price_model == 'BC':
-            if v_j > 0: 
+            # Buyer-centric: if v_j >= 0 pay φ v_j, otherwise pay 0
+            if v_j >= 0:
                 p_j = phi * v_j
-                if p_j <= eta_j:
-                    # print(f"Iteration {iteration}:  p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f}), Skip.")
-                    x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
-                    y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
-                    continue
             else:
                 p_j = 0
-
-            
         else:
+            # Seller-centric: always pay η_j
             p_j = eta_j
+
         cumulative_budget += p_j
         cumulative_budget_list.append(cumulative_budget)
+        price_list.append(p_j)
         data_bought_number += 1
         data_bought_number_list.append(data_bought_number)
-        price_list.append(p_j)
-        selected_sellers.append(random_idx)
+
 
         if v_j > 0:
+            selected_sellers.append(random_idx)
             # Update labelled set and remove the selected point from the unlabelled set
             x_labelled = x_temp_labelled
             y_labelled = y_temp_labelled
@@ -275,17 +287,19 @@ def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_u
             previous_var = new_var
             var_list.append(new_var)
 
-            # Log details and update lists
-            print(f"Iteration {iteration}:Data bought number: {data_bought_number}, Selected seller: {random_idx}, Price: {p_j:.4f}, Cumulative Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}")
+            print(
+                f"Iteration {iteration}: Data bought number: {data_bought_number}, "
+                f"Selected seller: {random_idx}, Price: {p_j:.4f}, "
+                f"Cumulative Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}"
+            )
 
         else:
-            # record unchanged variance 
+            # v_j <= 0: variance unchanged, label not added to D_L
             var_list.append(previous_var)
-            # print(f"Iteration {iteration}: selected seller {random_idx}, Price: {p_j:.4f}, "
-            # f"Cumulative budget: {cumulative_budget:.4f}, Variance (unchanged): {previous_var:.6f}")
             x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
             y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
             continue
+
 
         # Exit if the budget is exceeded or if the variance reduction is small enough
         if cumulative_budget >= B or new_var <= alpha:
@@ -359,20 +373,33 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
         v_j = previous_var - new_var
 
 
-        # Only proceed if v_j > 0 and WTP allows
-        if price_model == 'BC':
-            p_j = phi * v_j
-            if p_j <= eta_j:
-                # Add a fallback mechanism for small p_j
-                # print(f"Skipping point: p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f})")
-                x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
-                y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
-                continue
-        else:  # price_model == 'SC'
-            p_j = eta_j
+         # Only proceed if v_j > 0 and WTP allows
+        if v_j <= 0 or eta_j / v_j > phi:
+            # bad case
+            if price_model == 'BC':
+                p_j = 0
+            else:   # SC
+                p_j = eta_j
+
+            cumulative_budget += p_j   # always pay something in SC, pay 0 in BC]
+            cumulative_budget_list.append(cumulative_budget)
+            price_list.append(p_j)
+            data_bought_number += 1
+            data_bought_number_list.append(data_bought_number)
+            var_list.append(previous_var)
+
+
+            # DO NOT add to x_labelled, y_labelled
+            x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
+            y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
+            continue
 
         # Only proceed if v_j > 0 and WTP allows
         if v_j > 0 and eta_j/v_j < phi:
+            if price_model == 'BC':
+                p_j = phi * v_j
+            else:
+                p_j = eta_j
             # Update labelled set and budget
             x_labelled = x_temp_labelled
             y_labelled = y_temp_labelled
@@ -381,6 +408,7 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
 
             cumulative_var_reduction += v_j
             cumulative_budget += p_j
+            
 
             # Update tracking variables
             previous_var = new_var
@@ -390,6 +418,7 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
             cumulative_budget_list.append(cumulative_budget)
             price_list.append(p_j)
             selected_sellers.append(max_variance_index)
+
 
             print(f"Iteration {iteration}: Data bought: {data_bought_number}, Seller: {max_variance_index}, Price: {p_j:.4f}, Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}")
 
@@ -516,7 +545,7 @@ def plot_model_improvement_comparison(
         color='red', fontsize=30, weight='bold'
     )
 
-    ax.legend(fontsize=30, loc='lower right')
+    ax.legend(fontsize=30, loc='best')
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -563,7 +592,8 @@ def plot_variance_reduction_comparison(
     )
     ax.legend(
         fontsize=30,
-        loc='upper right'
+        loc='best'
+
     )
     ax.grid(False)
     ax.spines['top'].set_visible(False)
@@ -618,7 +648,7 @@ def plot_budget_utilization_comparison(
 
     ax.legend(
         fontsize=30,
-        loc='lower right',   
+        loc='best',   
     )
 
     ax.grid(False)
@@ -877,13 +907,13 @@ def plot_sorted_price_bar_chart_with_sc(
     )
     # X ticks
     num_sellers = len(ranks)
-    if num_sellers > 1:
+    if num_sellers <11:
         step = 1
         xticks = list(range(1, num_sellers + 1, step))
         if xticks[-1] != num_sellers:
             xticks.append(num_sellers)
     else:
-        xticks = [1]
+        xticks = [1,5,9,13,17,21]
     ax.set_xticks(xticks)
     ax.set_xticklabels([str(x) for x in xticks], fontsize=48)
     # Labels
@@ -903,7 +933,7 @@ def plot_sorted_price_bar_chart_with_sc(
     # Legend
     ax.legend(
         fontsize=50,
-        loc='upper right'
+        loc='best'
     )
     # Axis arrows
     _add_axis_arrows(ax, lw=2.5)
@@ -988,28 +1018,33 @@ def run_one_split(seed, price_model, phi=None, B=None, eta_scale=0.5):
     eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff= eta_scale)
 
     # --- run three strategies ---
-    vb_db, _, _, vb_prices, _ = vb_active_learning(
+    vb_db, _, _, vb_prices, vb_sl = vb_active_learning(
         X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
         phi, B, alpha_local, eta_local.copy(), price_model=price_model
     )
 
     bootstrap_seed = seed + 1000
-    q_db, _, _, q_prices, _ = qbc_active_learning(
+    q_db, _, _, q_prices, q_sl = qbc_active_learning(
         X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
         phi, B, alpha_local, eta_local.copy(), price_model=price_model,
         n_bootstrap=n_bootstrap, sampling_seed=bootstrap_seed
     )
 
     rsc_seed = seed + 2000
-    r_db, _, _, r_prices, _ = random_sampling_corrected_strategy(
+    r_db, _, _, r_prices, r_sl = random_sampling_corrected_strategy(
         X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
         phi, eta_local.copy(), B, alpha_local, price_model=price_model, rsc_seed=rsc_seed
     )
 
-    vb_last = vb_db[-1] if vb_db else 0
-    q_last  = q_db[-1] if q_db else 0
-    r_last  = r_db[-1] if r_db else 0
-    return vb_last, q_last, r_last, np.mean(vb_prices), np.mean(q_prices), np.mean(r_prices)
+    # vb_last = vb_db[-1] if vb_db else 0
+    # q_last  = q_db[-1] if q_db else 0
+    # r_last  = r_db[-1] if r_db else 0
+    vb_eff = len(vb_sl)
+    q_eff  = len(q_sl)
+    r_eff  = len(r_sl)
+
+
+    return np.mean(vb_prices), np.mean(q_prices), np.mean(r_prices), vb_eff, q_eff, r_eff
 
 # --- Monte-Carlo runs ---
 R = 50
@@ -1021,13 +1056,13 @@ avgcost_SC_VBAL, avgcost_SC_QBCAL, avgcost_SC_RSC = [], [], []
 print("\n===============================\nExecuting Monte-Carlo runs...\n")
 for s in seeds:
     # Buyer-centric
-    _, _, _, v_bc, q_bc, r_bc = run_one_split(s, price_model='BC')
+    v_bc, q_bc, r_bc, _, _, _ = run_one_split(s, price_model='BC')
     avgcost_BC_VBAL.append(v_bc)
     avgcost_BC_QBCAL.append(q_bc)
     avgcost_BC_RSC.append(r_bc)
 
     # Seller-centric
-    _, _, _, v_sc, q_sc, r_sc = run_one_split(s, price_model='SC')
+    v_sc, q_sc, r_sc, _, _, _ = run_one_split(s, price_model='SC')
     avgcost_SC_VBAL.append(v_sc)
     avgcost_SC_QBCAL.append(q_sc)
     avgcost_SC_RSC.append(r_sc)
@@ -1102,14 +1137,14 @@ def purchases_vs_phi(phi_list, B_fixed, price_model="BC", random_state=42):
     vbal_counts, qbcal_counts, rsc_counts = [], [], []
 
     for i, phi_val in enumerate(phi_list):
-        vb_db, _, _, _, _ = vb_active_learning(
+        vb_db, _, _, _, vb_sl = vb_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_val, B_fixed, alpha_local, eta_local.copy(),
             price_model=price_model
         )
 
-        q_db, _, _, _, _ = qbc_active_learning(
+        q_db, _, _, _, q_sl = qbc_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_val, B_fixed, alpha_local, eta_local.copy(),
@@ -1118,7 +1153,7 @@ def purchases_vs_phi(phi_list, B_fixed, price_model="BC", random_state=42):
             sampling_seed=sampling_seed
         )
 
-        r_db, _, _, _, _ = random_sampling_corrected_strategy(
+        r_db, _, _, _, r_sl = random_sampling_corrected_strategy(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_val, eta_local.copy(), B_fixed, alpha_local,
@@ -1127,9 +1162,9 @@ def purchases_vs_phi(phi_list, B_fixed, price_model="BC", random_state=42):
 
         )
 
-        vbal_counts.append(vb_db[-1] if len(vb_db) else 0)
-        qbcal_counts.append(q_db[-1] if len(q_db) else 0)
-        rsc_counts.append(r_db[-1] if len(r_db) else 0)
+        vbal_counts.append(len(vb_sl))
+        qbcal_counts.append(len(q_sl))
+        rsc_counts.append(len(r_sl))
 
     return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts)
 
@@ -1154,7 +1189,7 @@ def plot_sensitivity_to_phi(phi_list, B_fixed, price_model="BC",
 
 
     ax.set_xlabel(r'Willingness to Pay $\phi$ [£/TWD$^2$ ]', fontsize=35)
-    ax.set_ylabel('Data points purchased', fontsize=35)
+    ax.set_ylabel('Effectively purchased data points', fontsize=35)
 
     ax.set_xticks(phi_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
@@ -1204,14 +1239,14 @@ def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed,
     for i, coeff in enumerate(coeff_list):
         eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff=coeff)
 
-        vb_db, _, _, _, _ = vb_active_learning(
+        vb_db, _, _, _, vb_sl= vb_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_fixed, B_fixed, alpha_local, eta_local.copy(),
             price_model=price_model
         )
 
-        q_db, _, _, _, _ = qbc_active_learning(
+        q_db, _, _, _,  q_sl = qbc_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_fixed, B_fixed, alpha_local, eta_local.copy(),
@@ -1220,7 +1255,7 @@ def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed,
             sampling_seed=sampling_seed
         )
 
-        r_db, _, _, _, _ = random_sampling_corrected_strategy(
+        r_db, _, _, _, r_sl= random_sampling_corrected_strategy(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_fixed, eta_local.copy(), B_fixed, alpha_local,
@@ -1228,9 +1263,9 @@ def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed,
             rsc_seed = rsc_seed+i
         )
 
-        vbal_counts.append(vb_db[-1] if len(vb_db) else 0)
-        qbcal_counts.append(q_db[-1] if len(q_db) else 0)
-        rsc_counts.append(r_db[-1] if len(r_db) else 0)
+        vbal_counts.append(len(vb_sl))
+        qbcal_counts.append(len(q_sl))
+        rsc_counts.append(len(r_sl))
 
     return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts)
 
@@ -1255,7 +1290,7 @@ def plot_sensitivity_to_wts_coeff(coeff_list, phi_fixed, B_fixed,
             linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
 
     ax.set_xlabel(r'WTS scaling coefficient $d_1$', fontsize=35)
-    ax.set_ylabel('Data points purchased', fontsize=35)
+    ax.set_ylabel('Effectively purchased data points', fontsize=35)
 
     ax.set_xticks(coeff_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
@@ -1263,7 +1298,7 @@ def plot_sensitivity_to_wts_coeff(coeff_list, phi_fixed, B_fixed,
 
     ax.legend(
         fontsize=30,
-        loc='lower left'
+        loc='best'
     )
 
     ax.grid(False)
@@ -1311,14 +1346,14 @@ def purchases_vs_budget(B_list, price_model="BC", random_state=42):
     vbal_counts, qbcal_counts, rsc_counts = [], [], []
 
     for i, B_val in enumerate(B_list):
-        vb_db, _, _, _, _ = vb_active_learning(
+        vb_db, _, _, _, vb_sl= vb_active_learning(
             X_lab.copy(), y_lab.copy(),
             X_unlab.copy(), y_unlab.copy(),
             phi, B_val, alpha_local, eta_local.copy(),
             price_model=price_model
         )
 
-        q_db, _, _, _, _ = qbc_active_learning(
+        q_db, _, _, _, q_sl = qbc_active_learning(
             X_lab.copy(), y_lab.copy(),
             X_unlab.copy(), y_unlab.copy(),
             phi, B_val, alpha_local, eta_local.copy(),
@@ -1327,7 +1362,7 @@ def purchases_vs_budget(B_list, price_model="BC", random_state=42):
             sampling_seed=sampling_seed
         )
 
-        r_db, _, _, _, _ = random_sampling_corrected_strategy(
+        r_db, _, _, _, r_sl = random_sampling_corrected_strategy(
             X_lab.copy(), y_lab.copy(),
             X_unlab.copy(), y_unlab.copy(),
             phi, eta_local.copy(), B_val, alpha_local,
@@ -1336,9 +1371,9 @@ def purchases_vs_budget(B_list, price_model="BC", random_state=42):
 
         )
 
-        vbal_counts.append(vb_db[-1])
-        qbcal_counts.append(q_db[-1])
-        rsc_counts.append(r_db[-1])
+        vbal_counts.append(len(vb_sl))
+        qbcal_counts.append(len(q_sl))
+        rsc_counts.append(len(r_sl))
 
     return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts)
 
@@ -1362,7 +1397,7 @@ def plot_sensitivity_to_budget(B_list, price_model="BC", filename="sensitivity_t
             linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
 
     ax.set_xlabel('Budget limit $B$ [£]', fontsize=35)
-    ax.set_ylabel('Data points purchased', fontsize=35)
+    ax.set_ylabel('Effectively purchased data points', fontsize=35)
 
     ax.set_xticks(B_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
@@ -1372,7 +1407,7 @@ def plot_sensitivity_to_budget(B_list, price_model="BC", filename="sensitivity_t
 
     ax.legend(
         fontsize=30,
-        loc='upper left'
+        loc='best'
     )
 
     ax.grid(False)
@@ -1395,27 +1430,23 @@ plot_sensitivity_to_budget(B_values_SC, price_model="SC", filename="sensitivity_
 
 
 def monte_carlo_summary(param_list, B_fixed, price_model="BC", runs=50, param_name="phi"):
-    """
-    Perform Monte Carlo evaluation across independent data partitions.
-    Each run uses:
-        - data_seed = 100 + s  (s ∈ [0, runs))
-        - QBC bootstrap_seed = 1100 + s
-        - RSC sampling_seed   = 2100 + s
-    """
     records = []
+
     for val in param_list:
         vb_counts, q_counts, r_counts = [], [], []
+
         for s in range(runs):
-            vb_c, q_c, r_c, _, _, _ = run_one_split(
-                seed=100 + s,
-                price_model=price_model,
-                phi=val if param_name == "phi" else 1200,
-                B=val if param_name == "B" else B_fixed,
-                eta_scale=val if param_name == "eta" else 0.5
+            _,_,_,vb_eff, q_eff, r_eff = run_one_split(
+                seed = 100 + s,
+                price_model = price_model,
+                phi = val if param_name == "phi" else 1200,
+                B   = val if param_name == "B" else B_fixed,
+                eta_scale = val if param_name == "eta" else 0.5
             )
-            vb_counts.append(vb_c)
-            q_counts.append(q_c)
-            r_counts.append(r_c)
+
+            vb_counts.append(vb_eff)
+            q_counts.append(q_eff)
+            r_counts.append(r_eff)
 
         def summarize(arr):
             arr = np.array(arr)
@@ -1431,6 +1462,7 @@ def monte_carlo_summary(param_list, B_fixed, price_model="BC", runs=50, param_na
             "QBCAL_mean": qb_mean, "QBCAL_p25": qb_p25, "QBCAL_p75": qb_p75,
             "RSC_mean":  r_mean,  "RSC_p25":  r_p25,  "RSC_p75":  r_p75
         })
+
     return pd.DataFrame(records)
 
 
