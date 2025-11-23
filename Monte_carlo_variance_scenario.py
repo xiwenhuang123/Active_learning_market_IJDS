@@ -19,6 +19,8 @@ import time
 
 # ============================ Paths & timer ============================
 start_time = time.time()
+if '__file__' not in globals():
+    __file__ = str(Path.cwd() / "IJDS_Variance.py")
 
 THIS_DIR = Path(__file__).resolve().parent
 PLOT_DIR = THIS_DIR / "Plots" / "VarianceScenario"
@@ -78,7 +80,7 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
     var_list = []
     data_bought_number_list = []
     cumulative_budget_list = []
-    data_bought_number_list.append(data_bought_number) 
+    data_bought_number_list.append(data_bought_number)
     cumulative_budget_list.append(cumulative_budget)
     price_list = []
     iteration = 0
@@ -116,46 +118,56 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
         variance_reduction = previous_variance - new_variance
         eta_j = eta_j_list[max_variance_index]
 
-        # Willingness to sell and pay comparison
+        # bad case: no useful or not worth it
         if variance_reduction <= 0 or eta_j / variance_reduction > phi:
-            # print(f"Iteration {iteration}: insufficient variance reduction, skip.")
+            if price_model == 'BC':
+                p_j = 0.0
+            else:   # SC
+                p_j = eta_j
+
+            cumulative_budget += p_j   # always pay something in SC, pay 0 in BC
+            cumulative_budget_list.append(cumulative_budget)
+            price_list.append(p_j)
+            var_list.append(previous_variance)
+            data_bought_number+=1
+            data_bought_number_list.append(data_bought_number)
+
             x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
             y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
             continue
 
-        # Pricing model
+        # good case: variance_reduction > 0 and eta_j / variance_reduction <= phi
         if price_model == 'BC':
             p_j = phi * variance_reduction
-            if p_j <= eta_j:
-                # print(f"Iteration {iteration}:  p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f}), Skip.")
-                x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
-                y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
-                continue
         else:
             p_j = eta_j
 
-        # Update the labeled set and budget
+        # update labelled set and budget
         x_labelled = x_temp_labelled
         y_labelled = y_temp_labelled
         previous_variance = new_variance
         cumulative_var_reduction += variance_reduction
+
         cumulative_budget += p_j
+        cumulative_budget_list.append(cumulative_budget)
         data_bought_number += 1
         data_bought_number_list.append(data_bought_number)
-
-        # Logging the result of this iteration
-        # print(f"Iteration {iteration}: Data bought number: {data_bought_number}, Selected seller: {max_variance_index}, Variance Reduction: {variance_reduction:.6f}, New Variance: {new_variance:.6f}, Price: {p_j:.6f}, Cumulative Budget: {cumulative_budget:.6f}")
-
-        # Record the results
-        var_list.append(new_variance)
-        cumulative_budget_list.append(cumulative_budget)
         price_list.append(p_j)
         selected_sellers.append(max_variance_index)
 
+        print(
+            f"Iteration {iteration}: Data bought number: {data_bought_number}, "
+            f"Selected seller: {max_variance_index}, Variance Reduction: {variance_reduction:.6f}, "
+            f"New Variance: {new_variance:.6f}, Price: {p_j:.6f}, "
+            f"Cumulative Budget: {cumulative_budget:.6f}"
+        )
+
+        var_list.append(new_variance)
+
+
         # Check stopping criteria
         if cumulative_budget >= B or new_variance <= alpha:
-            improve = (initial_variance - new_variance) / initial_variance
-            print(f"Stopping criteria met. Variance reduction: {improve}")
+            print(f"VBAL: Variance reduction: {(initial_variance- new_variance) / initial_variance:.4%}")
             break
 
         # Remove the selected data point from the unlabelled set
@@ -164,106 +176,109 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
 
     return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
 
-
 # Random Sampling corrected Strategy 
-def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, eta_j_list, B, alpha, price_model):
+def random_sampling_corrected_strategy(
+    x_labelled, y_labelled, x_unlabelled, y_unlabelled,
+    phi, B, alpha, eta_j_list, price_model, rsc_seed=None
+):
+    # -------------------------
+    # Initialize
+    # -------------------------
+    if rsc_seed is not None:
+        np.random.seed(rsc_seed)
+
+    # Compute local initial variance (avoid using global!)
+    initial_var_mat, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
+    initial_var = np.mean(np.diag(initial_var_mat))
+
     cumulative_var_reduction = 0
     cumulative_budget = 0
-    var_list = []
+
+    var_list = [initial_var]
     data_bought_number = 0
-    data_bought_number_list = []
-    cumulative_budget_list = []
+    data_bought_number_list = [0]
+    cumulative_budget_list = [0]
     price_list = []
-    iteration = 0
     selected_sellers = []
 
-    initial_var, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
-    initial_var = np.mean(np.diag(initial_var))
-    var_list.append(initial_var)
-    print(f"RSC initial variance: {initial_var:.6f},  Budget Limit = {B}, variance Threshold = {alpha}")
-    data_bought_number_list.append(data_bought_number)
-    cumulative_budget_list.append(cumulative_budget)
     previous_var = initial_var
 
-    # Set seed for reproducibility
-    # np.random. seed(123)
+    print(f"RSC initial variance: {initial_var:.6f}, Budget Limit = {B}, Variance Threshold = {alpha}")
 
-    while cumulative_budget < B and initial_var - cumulative_var_reduction > alpha:
-        iteration += 1
-        if x_unlabelled.shape[0] == 0:
-            print(f"No unlabeled data points left after {iteration} iterations. Stopping.")
+    # -------------------------
+    # Main loop
+    # -------------------------
+    while cumulative_budget < B and (initial_var - cumulative_var_reduction) > alpha:
+
+        if len(x_unlabelled) == 0:
             break
 
-        # Randomly pick one data point (without any comparison)
-        random_idx = np.random.randint(0, x_unlabelled.shape[0])
-        x_random_point = x_unlabelled[random_idx].reshape(1, -1)
-        y_random_point = y_unlabelled[random_idx]
+        # Randomly select a sample
+        j = np.random.randint(0, x_unlabelled.shape[0])
 
-        # Add it to the labelled set
-        x_temp_labelled = np.vstack([x_labelled, x_random_point])
-        y_temp_labelled = np.append(y_labelled, y_random_point)
+        x_new = x_unlabelled[j].reshape(1, -1)
+        y_new = y_unlabelled[j]
 
-        # Retrain the model with the new data
-        new_var, _ = calculate_variance_of_coefficients_on_training(x_temp_labelled, y_temp_labelled)
-        new_var = np.mean(np.diag(new_var))
+        # Temporarily add to labelled set
+        x_temp = np.vstack([x_labelled, x_new])
+        y_temp = np.append(y_labelled, y_new)
+
+        # Compute new variance
+        new_var_mat, _ = calculate_variance_of_coefficients_on_training(x_temp, y_temp)
+        new_var = np.mean(np.diag(new_var_mat))
+
         v_j = previous_var - new_var
-        eta_j = eta_j_list[random_idx]
+        eta_j = eta_j_list[j]
 
-        # Pricing model
-        if price_model == 'BC':
-            if v_j > 0: 
-                p_j = phi * v_j
-                if p_j <= eta_j:
-                    # print(f"Iteration {iteration}:  p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f}), Skip.")
-                    x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
-                    y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
-                    continue
-            else:
-                p_j = 0
-
-            
+        # -------------------------
+        # Price computation
+        # -------------------------
+        if price_model == "BC":
+            p_j = phi * v_j if v_j > 0 else 0
         else:
             p_j = eta_j
+
         cumulative_budget += p_j
         cumulative_budget_list.append(cumulative_budget)
+        price_list.append(p_j)
+
         data_bought_number += 1
         data_bought_number_list.append(data_bought_number)
-        price_list.append(p_j)
-        selected_sellers.append(random_idx)
 
+        # -------------------------
+        # Accept or reject the point
+        # -------------------------
         if v_j > 0:
-            # Update labelled set and remove the selected point from the unlabelled set
-            x_labelled = x_temp_labelled
-            y_labelled = y_temp_labelled
-            x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
-            y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
+            # Accept the data point
+            x_labelled = x_temp
+            y_labelled = y_temp
 
-            # Update cumulative variables
-            cumulative_var_reduction += v_j
+            x_unlabelled = np.delete(x_unlabelled, j, axis=0)
+            y_unlabelled = np.delete(y_unlabelled, j, axis=0)
+
             previous_var = new_var
+            cumulative_var_reduction += v_j
+            selected_sellers.append(j)
+
             var_list.append(new_var)
 
-            # Log details and update lists
-            # print(f"Iteration {iteration}:Data bought number: {data_bought_number}, Selected seller: {random_idx}, Price: {p_j:.4f}, Cumulative Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}")
-
         else:
-            # record unchanged variance 
+            # Reject it (no update)
             var_list.append(previous_var)
-            # print(f"Iteration {iteration}: selected seller {random_idx}, Price: {p_j:.4f}, "
-            # f"Cumulative budget: {cumulative_budget:.4f}, Variance (unchanged): {previous_var:.6f}")
-            x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
-            y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
-            continue
 
-        # Exit if the budget is exceeded or if the variance reduction is small enough
+            x_unlabelled = np.delete(x_unlabelled, j, axis=0)
+            y_unlabelled = np.delete(y_unlabelled, j, axis=0)
+
         if cumulative_budget >= B or new_var <= alpha:
-            improve = (initial_var - new_var)/initial_var
-            print(f" Stopping criteria met. Variance reduction: {improve}")
- 
             break
 
-    return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
-
+    return (
+        data_bought_number_list,
+        var_list,
+        cumulative_budget_list,
+        price_list,
+        selected_sellers
+    )
 
 # Bootstrap Sampling Strategy
 def bootstrap_and_ambiguity(x_train, y_train, x_unlabelled, n_bootstrap):
@@ -279,7 +294,7 @@ def bootstrap_and_ambiguity(x_train, y_train, x_unlabelled, n_bootstrap):
         model.fit(x_train_bootstrap, y_train_bootstrap)
         models.append(model)
         predictions.append(model.predict(x_unlabelled))
-        variances = np.var(predictions, axis=0)
+    variances = np.var(predictions, axis=0)
     return models, variances
 
 # Bootstrap Sampling Strategy with v_j > 0 and eta_j / v_j < phi comparison
@@ -327,19 +342,34 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
         new_var = np.mean(np.diag(new_var))
         v_j = previous_var - new_var
 
-        if price_model == 'BC':
-            p_j = phi * v_j
-            if p_j <= eta_j:
-                # Add a fallback mechanism for small p_j
-                # print(f"Skipping point: p_j ({p_j:.6f}) <= eta_j ({eta_j:.6f})")
-                x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
-                y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
-                continue
-        else:  # price_model == 'SC'
-            p_j = eta_j
+
+         # Only proceed if v_j > 0 and WTP allows
+        if v_j <= 0 or eta_j / v_j > phi:
+            # bad case
+            if price_model == 'BC':
+                p_j = 0
+            else:   # SC
+                p_j = eta_j
+
+            cumulative_budget += p_j   # always pay something in SC, pay 0 in BC]
+            cumulative_budget_list.append(cumulative_budget)
+            price_list.append(p_j)
+            data_bought_number += 1
+            data_bought_number_list.append(data_bought_number)
+            var_list.append(previous_var)
+
+
+            # DO NOT add to x_labelled, y_labelled
+            x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
+            y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
+            continue
 
         # Only proceed if v_j > 0 and WTP allows
         if v_j > 0 and eta_j/v_j < phi:
+            if price_model == 'BC':
+                p_j = phi * v_j
+            else:
+                p_j = eta_j
             # Update labelled set and budget
             x_labelled = x_temp_labelled
             y_labelled = y_temp_labelled
@@ -348,7 +378,7 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
 
             cumulative_var_reduction += v_j
             cumulative_budget += p_j
-
+            
             # Update tracking variables
             previous_var = new_var
             var_list.append(new_var)
@@ -358,11 +388,12 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
             price_list.append(p_j)
             selected_sellers.append(max_variance_index)
 
-            # print(f"Iteration {iteration}: Data bought: {data_bought_number}, Seller: {max_variance_index}, Price: {p_j:.4f}, Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}")
+
+            print(f"Iteration {iteration}: Data bought: {data_bought_number}, Seller: {max_variance_index}, Price: {p_j:.4f}, Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}")
 
         # Check stopping condition
         if cumulative_budget >= B or new_var <= alpha:
-            print(f"Stopping criteria met. Variance reduction: {(initial_var - new_var) / initial_var:.4%}")
+            print(f"QBCAL: Variance reduction: {(initial_var - new_var) / initial_var:.4%}")
             break
 
     return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
@@ -428,12 +459,14 @@ def save_fig_consistent(fig, filename, width=14, height=12, dpi=300):
     )
 
 
-def run_monte_carlo(strategy_function, num_iterations, x, y, phi, B, eta_j_list, price_model, test_size=0.7):
+def run_monte_carlo(strategy_function, num_iterations, x, y, phi, B, price_model, test_size=0.7):
     results = []
     for i in range(num_iterations):
+        np.random.seed(i) 
+
         # Data splitting
         x_labelled, x_unlabelled, y_labelled, y_unlabelled = train_test_split(
-            x, y, test_size=test_size, random_state=None
+            x, y, test_size=test_size, random_state=i
         )
 
         # Convert to numpy arrays and flatten targets
@@ -442,19 +475,19 @@ def run_monte_carlo(strategy_function, num_iterations, x, y, phi, B, eta_j_list,
         y_labelled = y_labelled.to_numpy().flatten()
         y_unlabelled = y_unlabelled.to_numpy().flatten()
 
+        eta_j_list_iter = generate_eta_j(x_unlabelled, feature_columns)
+
           # Dynamically calculate initial alpha
         initial_var, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
         initial_var = np.mean(np.diag(initial_var))  # Extract the scalar variance
         alpha = initial_var * 0.8 
 
-        data_bought_number_list, _, _, _, _ = strategy_function(
+        data_bought_number_list, _, _, _, selected_sellers= strategy_function(
             x_labelled, y_labelled, x_unlabelled, y_unlabelled,
-            phi=phi, B=B, alpha=alpha, eta_j_list=eta_j_list, price_model=price_model
+            phi=phi, B=B, alpha=alpha, eta_j_list=eta_j_list_iter, price_model=price_model
         )
 
-        # Remove the first 0 entry in data_bought_number_list
-        data_bought_number_list = data_bought_number_list[1:]
-        results.append(len(data_bought_number_list))  # Store total number of data points purchased
+        results.append(len(selected_sellers))  # Store total number of data points purchased
 
     return results
 
@@ -510,26 +543,26 @@ num_iterations = 1000
 # VBAL Monte Carlo
 vb_monte_carlo_results = run_monte_carlo(
     vb_active_learning, num_iterations, x, y,
-    phi=phi, B=B, eta_j_list= eta_j_list, price_model='BC'
+    phi=phi, B=B,  price_model='BC'
 )
 
 # RSC Monte Carlo
 rsc_monte_carlo_results = run_monte_carlo(
     random_sampling_corrected_strategy, num_iterations, x, y,
-    phi=phi, B=B, eta_j_list = eta_j_list,price_model='BC'
+    phi=phi, B=B ,price_model='BC'
 )
 
 # QBCAL Monte Carlo
 qbcal_monte_carlo_results = run_monte_carlo(
     qbc_active_learning, num_iterations, x, y,
-    phi=phi, B=B,eta_j_list = eta_j_list,price_model='BC'
+    phi=phi, B=B, price_model='BC'
 )
 
 
 plot_monte_carlo_histogram(
     vb_monte_carlo_results,
     # title="Monte Carlo Histogram of Purchased Data Points (VBAL)",
-    xlabel="Number of purchased data points",
+    xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_vb_monte_carlo_histogram.pdf",
     ylim = (0,500)
@@ -539,7 +572,7 @@ plot_monte_carlo_histogram(
 plot_monte_carlo_histogram(
     rsc_monte_carlo_results,
     # title="Monte Carlo Histogram of Purchased Data Points (RSC)",
-    xlabel="Number of purchased data points",
+    xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_rsc_monte_carlo_histogram.pdf",
     ylim = (0,500)
@@ -548,52 +581,52 @@ plot_monte_carlo_histogram(
 plot_monte_carlo_histogram(
     qbcal_monte_carlo_results,
     # title="Monte Carlo Histogram of Purchased Data Points (QBCAL)",
-    xlabel="Number of purchased data points",
+    xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_qbcal_monte_carlo_histogram.pdf",
     ylim = (0,500)
 )
 
-vb_monte_carlo_results = run_monte_carlo(
+vb_monte_carlo_results_sc = run_monte_carlo(
     vb_active_learning, num_iterations, x, y,
-    phi=phi, B=B, eta_j_list = eta_j_list, price_model='SC'
+    phi=phi, B=B, price_model='SC'
 )
 
 
 # RSC Monte Carlo
-rsc_monte_carlo_results = run_monte_carlo(
+rsc_monte_carlo_results_sc = run_monte_carlo(
     random_sampling_corrected_strategy, num_iterations, x, y,
-    phi=phi, B=B, eta_j_list = eta_j_list,price_model='SC'
+    phi=phi, B=B, price_model='SC'
 )
 
 # QBCAL Monte Carlo
-qbcal_monte_carlo_results = run_monte_carlo(
+qbcal_monte_carlo_results_sc = run_monte_carlo(
     qbc_active_learning, num_iterations, x, y,
-    phi=phi, B=B,eta_j_list = eta_j_list,price_model='SC'
+    phi=phi, B=B, price_model='SC'
 )
 
 plot_monte_carlo_histogram(
-    vb_monte_carlo_results,
+    vb_monte_carlo_results_sc,
     # title="Monte Carlo Histogram of Purchased Data Points (VBAL)",
-    xlabel="Number of purchased data points",
+    xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_vb_monte_carlo_histogram_SC.pdf",
     ylim = (0,500)
 )
 
 plot_monte_carlo_histogram(
-    rsc_monte_carlo_results,
+    rsc_monte_carlo_results_sc,
     # title="Monte Carlo Histogram of Purchased Data Points (RSC)",
-    xlabel="Number of purchased data points",
+    xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_rsc_monte_carlo_histogram_SC.pdf",
     ylim = (0,500)
 )
 
 plot_monte_carlo_histogram(
-    qbcal_monte_carlo_results,
+    qbcal_monte_carlo_results_sc,
     # title="Monte Carlo Histogram of Purchased Data Points (QBCAL)",
-    xlabel="Number of purchased data points",
+    xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_qbcal_monte_carlo_histogram_SC.pdf",
     ylim = (0,500)
