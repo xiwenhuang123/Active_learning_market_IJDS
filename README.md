@@ -7,9 +7,9 @@ submitted to *INFORMS Journal on Data Science (IJDS)*.
 
 ## Abstract
 
-We introduce and analyse active learning markets as a way to purchase labels, in situations where analysts aim to acquire additional data to improve model fitting, or to better train models for predictive analytics applications. This contrasts with many existing proposals that focus on purchasing features and examples. By formalizing the market clearing as an optimization problem, we integrate budget constraints and improvement thresholds into the data selection process, ensuring efficiency and cost-effectiveness.  
+We introduce and analyse active learning markets as a way to purchase labels, in situations where analysts aim to acquire additional data to improve model fitting, or to better train models for predictive analytics applications. This contrasts with many existing proposals that focus on purchasing features and examples. By formalizing the market clearing as an optimisation problem, we integrate budget constraints and improvement thresholds into the data selection process, ensuring efficiency and cost-effectiveness.  
 
-We focus on a single-buyer–multiple-seller setup and propose two active learning strategies (variance-based and query-by-committee based), combined with distinct pricing mechanisms. These strategies are compared to a benchmark random sampling approach. The proposed methods are validated on real-world datasets from two domains: real estate pricing and energy forecasting. Results demonstrate strong robustness and consistent performance gains with fewer acquired data points. Our proposal offers a practical and easy-to-implement solution for optimizing data acquisition in resource-constrained environments.
+We focus on a single-buyer–multiple-seller setup and propose two active learning strategies (variance-based and query-by-committee based), combined with distinct pricing mechanisms. These strategies are compared to a benchmark random sampling approach. The proposed methods are validated on real-world datasets from two domains: real estate pricing and energy forecasting. Results demonstrate strong robustness and consistent performance gains with fewer acquired data points. Our proposal offers a practical and easy-to-implement solution for optimising data acquisition in resource-constrained environments.
 
 ---
 
