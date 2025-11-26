@@ -565,7 +565,7 @@ plot_monte_carlo_histogram(
     xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_vb_monte_carlo_histogram.pdf",
-    ylim = (0,500)
+    ylim = (0,400)
 )
 
 
@@ -575,7 +575,7 @@ plot_monte_carlo_histogram(
     xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_rsc_monte_carlo_histogram.pdf",
-    ylim = (0,500)
+    ylim = (0,400)
 )
 
 plot_monte_carlo_histogram(
@@ -584,7 +584,7 @@ plot_monte_carlo_histogram(
     xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_qbcal_monte_carlo_histogram.pdf",
-    ylim = (0,500)
+    ylim = (0,400)
 )
 
 vb_monte_carlo_results_sc = run_monte_carlo(
@@ -611,7 +611,7 @@ plot_monte_carlo_histogram(
     xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_vb_monte_carlo_histogram_SC.pdf",
-    ylim = (0,500)
+    ylim = (0,400)
 )
 
 plot_monte_carlo_histogram(
@@ -620,7 +620,7 @@ plot_monte_carlo_histogram(
     xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_rsc_monte_carlo_histogram_SC.pdf",
-    ylim = (0,500)
+    ylim = (0,400)
 )
 
 plot_monte_carlo_histogram(
@@ -629,7 +629,7 @@ plot_monte_carlo_histogram(
     xlabel="Effectively purchased data points",
     ylabel="Frequency",
     filename="1_qbcal_monte_carlo_histogram_SC.pdf",
-    ylim = (0,500)
+    ylim = (0,400)
 )
 
 # ============================ Total runtime ============================
