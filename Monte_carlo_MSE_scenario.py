@@ -3,8 +3,8 @@ Predictive-ability-focused scenario (building energy case study).
 Author: Xiwen Huang
 
 This script reproduces the following results in the paper:
+- Figure 11
 - Figure 12
-- Figure 13
 
 """
 import numpy as np
