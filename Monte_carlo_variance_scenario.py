@@ -3,8 +3,8 @@ Estimation-quality-focused scenario (real-estate valuation case study).
 Author: Xiwen Huang
 
 This script reproduces the following results in the paper:
+- Figures 6
 - Figures 7
-- Figures 8
 
 """
 from ucimlrepo import fetch_ucirepo 
@@ -398,6 +398,101 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
 
     return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
 
+
+def greedy_knapsack_benchmark(
+    x_labelled, y_labelled,
+    x_unlabelled, y_unlabelled,
+    phi, B, alpha,
+    eta_j_list,
+    price_model,
+    max_iterations=500
+):
+    """
+    Greedy knapsack baseline (reviewer):
+      - Selection: sort by 1/eta_j high->low => pick smallest eta each step.
+      - Payment:
+          SC: always pay eta_j
+          BC: pay phi * v_j if v_j>0 else 0
+      - Add to labelled set only if v_j>0 (keeps variance monotone).
+      - Always remove the approached point from unlabeled pool.
+    """
+    cumulative_budget = 0.0
+    data_bought_number = 0
+    iteration = 0
+    selected_sellers = []
+    price_list = []
+    data_bought_number_list = [0]
+    cumulative_budget_list = [0.0]
+
+    init_var_mat, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
+    previous_var = float(np.mean(np.diag(init_var_mat)))
+    var_list = [previous_var]
+
+    print(f"GreedyKnapsack: Initial Variance: {previous_var:.6f} Budget Limit = {B}, Variance Threshold = {alpha}")
+
+    while cumulative_budget < B and iteration < max_iterations:
+        iteration += 1
+        if x_unlabelled.shape[0] == 0:
+            break
+
+        # pick eta smallest <=> 1/eta largest
+        pick_idx = int(np.argmin(eta_j_list))
+        eta_j = float(eta_j_list[pick_idx])
+
+        x_point = x_unlabelled[pick_idx]
+        y_point = y_unlabelled[pick_idx]
+
+        # compute v_j (variance reduction if added)
+        prev_var_mat, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
+        prev_var = float(np.mean(np.diag(prev_var_mat)))
+
+        x_temp = np.vstack([x_labelled, x_point.reshape(1, -1)])
+        y_temp = np.append(y_labelled, y_point)
+
+        new_var_mat, _ = calculate_variance_of_coefficients_on_training(x_temp, y_temp)
+        new_var = float(np.mean(np.diag(new_var_mat)))
+
+        v_j = prev_var - new_var
+
+        # payment rule
+        if price_model == "SC":
+            p_j = eta_j
+        else:  # BC
+            p_j = float(phi * v_j) if v_j > 0 else 0.0
+
+        cumulative_budget += p_j
+        cumulative_budget_list.append(cumulative_budget)
+        price_list.append(p_j)
+
+        data_bought_number += 1
+        data_bought_number_list.append(data_bought_number)
+
+        if v_j > 0:
+            x_labelled = x_temp
+            y_labelled = y_temp
+            previous_var = new_var
+            var_list.append(new_var)
+            selected_sellers.append(pick_idx)
+            print(
+                f"Iteration {iteration}: Data bought: {data_bought_number}, Seller: {pick_idx}, "
+                f"v_j: {v_j:.6f}, NewVar: {new_var:.6f}, Price: {p_j:.6f}, Budget: {cumulative_budget:.6f}"
+            )
+        else:
+            # do not add to D_L; variance trace stays flat
+            var_list.append(previous_var)
+
+        # remove from pool regardless
+        x_unlabelled = np.delete(x_unlabelled, pick_idx, axis=0)
+        y_unlabelled = np.delete(y_unlabelled, pick_idx, axis=0)
+        eta_j_list = np.delete(eta_j_list, pick_idx, axis=0)
+
+        if cumulative_budget >= B or previous_var <= alpha:
+            print(f"GreedyKnapsack: Variance reduction: {(var_list[0] - previous_var) / var_list[0]:.4%}")
+            break
+
+    return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
+
+
 # Define the feature columns used in the dataset
 feature_columns = ['X1 transaction date', 'X2 house age', 'X3 distance to the nearest MRT station', 'X4 number of convenience stores']
 
@@ -558,6 +653,12 @@ qbcal_monte_carlo_results = run_monte_carlo(
     phi=phi, B=B, price_model='BC'
 )
 
+# Knapsack Monte Carlo
+gk_monte_carlo_results = run_monte_carlo(
+    greedy_knapsack_benchmark, num_iterations, x, y,
+    phi=phi, B=B, price_model='BC'
+)
+
 
 plot_monte_carlo_histogram(
     vb_monte_carlo_results,
@@ -587,6 +688,14 @@ plot_monte_carlo_histogram(
     ylim = (0,400)
 )
 
+plot_monte_carlo_histogram(
+    gk_monte_carlo_results,
+    xlabel="Effectively purchased data points",
+    ylabel="Frequency",
+    filename="1_gk_monte_carlo_histogram.pdf",
+    ylim = (0,400)
+)
+
 vb_monte_carlo_results_sc = run_monte_carlo(
     vb_active_learning, num_iterations, x, y,
     phi=phi, B=B, price_model='SC'
@@ -602,6 +711,12 @@ rsc_monte_carlo_results_sc = run_monte_carlo(
 # QBCAL Monte Carlo
 qbcal_monte_carlo_results_sc = run_monte_carlo(
     qbc_active_learning, num_iterations, x, y,
+    phi=phi, B=B, price_model='SC'
+)
+
+# Knapsack Monte Carlo
+gk_monte_carlo_result_sc = run_monte_carlo(
+    greedy_knapsack_benchmark, num_iterations, x, y,
     phi=phi, B=B, price_model='SC'
 )
 
@@ -632,6 +747,13 @@ plot_monte_carlo_histogram(
     ylim = (0,400)
 )
 
+plot_monte_carlo_histogram(
+    gk_monte_carlo_result_sc,
+    xlabel="Effectively purchased data points",
+    ylabel="Frequency",
+    filename="1_gk_monte_carlo_histogram_SC.pdf",
+    ylim = (0,400)
+)
 # ============================ Total runtime ============================
 end_time = time.time()
 print("\n===================================")
