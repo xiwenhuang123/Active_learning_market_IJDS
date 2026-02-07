@@ -3,13 +3,10 @@ Estimation-quality-focused scenario (real-estate valuation case study).
 Author: Xiwen Huang
 
 This script reproduces the following results in the paper:
-- Figures 3a–3b
-- Figures 4a–4b
-- Figure 5
-- Figure 6
-- Figures 9a–9f
+- Figures 3-5
+- Figures 8a–8f
 - Table 2
-- Tables 4 and 5 (Appendix)
+- Tables 4 (Appendix)
 
 It also generates additional diagnostic plots that are not shown in the paper.
 """
@@ -157,6 +154,7 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
         if variance_reduction <= 0 or eta_j / variance_reduction > phi:
             if price_model == 'BC':
                 p_j = 0.0
+
             else:   # SC
                 p_j = eta_j
 
@@ -169,6 +167,8 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
 
             x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
             y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
+            eta_j_list = np.delete(eta_j_list, max_variance_index, axis=0)
+
             continue
 
         # good case: variance_reduction > 0 and eta_j / variance_reduction <= phi
@@ -176,6 +176,7 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
             p_j = phi * variance_reduction
         else:
             p_j = eta_j
+        
 
         # update labelled set and budget
         x_labelled = x_temp_labelled
@@ -191,11 +192,13 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
         selected_sellers.append(max_variance_index)
         var_list.append(new_variance)
 
+        # now print with consistent meaning
+        ratio = (eta_j / variance_reduction) if variance_reduction > 0 else np.inf
         print(
-            f"Iteration {iteration}: Data bought number: {data_bought_number}, "
-            f"Selected seller: {max_variance_index}, Variance Reduction: {variance_reduction:.6f}, "
-            f"New Variance: {new_variance:.6f}, Price: {p_j:.6f}, "
-            f"Cumulative Budget: {cumulative_budget:.6f}"
+            f"Iteration {iteration}: , attempt={data_bought_number}, "
+            f"effective={len(selected_sellers)}, seller={max_variance_index}, "
+            f"v_j={variance_reduction:.6f}, eta={eta_j:.4f}, eta/v={ratio:.1f}, "
+            f"price={p_j:.4f}, budget={cumulative_budget:.4f}"
         )
 
 
@@ -208,106 +211,126 @@ def vb_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, 
         # Remove the selected data point from the unlabelled set
         x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
         y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
+        eta_j_list = np.delete(eta_j_list, max_variance_index, axis=0)
+
 
     return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
 
 
 # Random sampling corrected strategy 
-def random_sampling_corrected_strategy(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, eta_j_list, B, alpha, price_model, rsc_seed=None):
-    cumulative_var_reduction = 0
-    cumulative_budget = 0
-    var_list = [initial_variance]
-    data_bought_number = 0
-    data_bought_number_list = []
-    cumulative_budget_list = []
-    price_list = []
-    iteration = 0
-    selected_sellers = []
-
-    print(f"RSC initial variance: {initial_variance:.6f},  Budget Limit = {B}, variance Threshold = {alpha}")
-    data_bought_number_list.append(data_bought_number)
-    cumulative_budget_list.append(cumulative_budget)
-    previous_var = initial_variance
-
-    # Set seed for reproducibility
+def random_sampling_corrected_strategy(
+    x_labelled, y_labelled, x_unlabelled, y_unlabelled,
+    phi, B, alpha, eta_j_list, price_model, rsc_seed=None
+):
+    # -------------------------
+    # Initialize
+    # -------------------------
     if rsc_seed is not None:
         np.random.seed(rsc_seed)
 
-    while cumulative_budget < B and initial_variance - cumulative_var_reduction > alpha:
-        iteration += 1
+    # Compute local initial variance (avoid using global!)
+    initial_var_mat, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
+    initial_var = np.mean(np.diag(initial_var_mat))
 
-        n = x_unlabelled.shape[0]
-        if n == 0:
+    cumulative_var_reduction = 0
+    cumulative_budget = 0
+    iteration = 0
+
+    var_list = [initial_var]
+    data_bought_number = 0
+    data_bought_number_list = [0]
+    cumulative_budget_list = [0]
+    price_list = []
+    selected_sellers = []
+
+    previous_var = initial_var
+
+    print(f"RSC initial variance: {initial_var:.6f}, Budget Limit = {B}, Variance Threshold = {alpha}")
+
+    # -------------------------
+    # Main loop
+    # -------------------------
+    while cumulative_budget < B and initial_var - cumulative_var_reduction > alpha:
+
+        iteration += 1
+        if x_unlabelled.shape[0] == 0:
             break
 
-        
-        # Randomly pick one data point (without any comparison)
-        random_idx = np.random.randint(0, x_unlabelled.shape[0])
-        x_random_point = x_unlabelled[random_idx].reshape(1, -1)
-        y_random_point = y_unlabelled[random_idx]
+        # Randomly select a sample
+        j = np.random.randint(0, x_unlabelled.shape[0])
 
-        # Add it to the labelled set
-        x_temp_labelled = np.vstack([x_labelled, x_random_point])
-        y_temp_labelled = np.append(y_labelled, y_random_point)
+        x_new = x_unlabelled[j].reshape(1, -1)
+        y_new = y_unlabelled[j]
 
-        # Retrain the model with the new data
-        new_var, _ = calculate_variance_of_coefficients_on_training(x_temp_labelled, y_temp_labelled)
-        new_var = np.mean(np.diag(new_var))
+        # Temporarily add to labelled set
+        x_temp = np.vstack([x_labelled, x_new])
+        y_temp = np.append(y_labelled, y_new)
+
+        # Compute new variance
+        new_var_mat, _ = calculate_variance_of_coefficients_on_training(x_temp, y_temp)
+        new_var = np.mean(np.diag(new_var_mat))
+
         v_j = previous_var - new_var
-        eta_j = eta_j_list[random_idx]
+        eta_j = eta_j_list[j]
 
-        # Pricing model
-        if price_model == 'BC':
-            # Buyer-centric: if v_j >= 0 pay φ v_j, otherwise pay 0
-            if v_j >= 0:
-                p_j = phi * v_j
-            else:
-                p_j = 0
+        # -------------------------
+        # Price computation
+        # -------------------------
+        if price_model == "BC":
+            p_j = phi * v_j if v_j > 0 else 0
         else:
-            # Seller-centric: always pay η_j
             p_j = eta_j
 
         cumulative_budget += p_j
         cumulative_budget_list.append(cumulative_budget)
         price_list.append(p_j)
+
         data_bought_number += 1
         data_bought_number_list.append(data_bought_number)
 
+        # -------------------------
+        # Accept or reject the point
+        # -------------------------
 
+        x_unlabelled = np.delete(x_unlabelled, j, axis=0)
+        y_unlabelled = np.delete(y_unlabelled, j, axis=0)
+        eta_j_list = np.delete(eta_j_list, j, axis=0)
         if v_j > 0:
-            selected_sellers.append(random_idx)
-            # Update labelled set and remove the selected point from the unlabelled set
-            x_labelled = x_temp_labelled
-            y_labelled = y_temp_labelled
-            x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
-            y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
+            # Accept the data point
+            x_labelled = x_temp
+            y_labelled = y_temp
 
-            # Update cumulative variables
-            cumulative_var_reduction += v_j
+
             previous_var = new_var
-            var_list.append(new_var)
+            cumulative_var_reduction += v_j
+            selected_sellers.append(j)
 
+            var_list.append(new_var)
             print(
-                f"Iteration {iteration}: Data bought number: {data_bought_number}, "
-                f"Selected seller: {random_idx}, Price: {p_j:.4f}, "
-                f"Cumulative Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}"
+                f"Iteration {iteration}: , attempt={data_bought_number}, "
+                f"effective={len(selected_sellers)}, seller={j}, "
+                f"v_j={v_j:.6f}, eta={eta_j:.4f}"
+                f"price={p_j:.4f}, budget={cumulative_budget:.4f}"
             )
 
         else:
-            # v_j <= 0: variance unchanged, label not added to D_L
+            # Reject it (no update)
             var_list.append(previous_var)
-            x_unlabelled = np.delete(x_unlabelled, random_idx, axis=0)
-            y_unlabelled = np.delete(y_unlabelled, random_idx, axis=0)
-            continue
 
+            
 
-        # Exit if the budget is exceeded or if the variance reduction is small enough
         if cumulative_budget >= B or new_var <= alpha:
-            print(f" RSC: Variance reduction: {(initial_variance - new_var) / initial_variance:.4%}")
- 
+            print(f"RSC: Variance reduction: {(initial_var - new_var) / initial_var:.4%}")
+
             break
 
-    return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
+    return (
+        data_bought_number_list,
+        var_list,
+        cumulative_budget_list,
+        price_list,
+        selected_sellers
+    )
 
 
 # Bootstrap Sampling function in QBCAL
@@ -392,6 +415,8 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
             # DO NOT add to x_labelled, y_labelled
             x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
             y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
+            eta_j_list = np.delete(eta_j_list, max_variance_index, axis=0)
+
             continue
 
         # Only proceed if v_j > 0 and WTP allows
@@ -405,6 +430,8 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
             y_labelled = y_temp_labelled
             x_unlabelled = np.delete(x_unlabelled, max_variance_index, axis=0)
             y_unlabelled = np.delete(y_unlabelled, max_variance_index, axis=0)
+            eta_j_list = np.delete(eta_j_list, max_variance_index, axis=0)
+
 
             cumulative_var_reduction += v_j
             cumulative_budget += p_j
@@ -420,8 +447,14 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
             selected_sellers.append(max_variance_index)
 
 
-            print(f"Iteration {iteration}: Data bought: {data_bought_number}, Seller: {max_variance_index}, Price: {p_j:.4f}, Budget: {cumulative_budget:.4f}, Variance: {new_var:.6f}")
-
+            
+            ratio = (eta_j / v_j) if v_j > 0 else np.inf
+            print(
+                f"Iteration {iteration}: , attempt={data_bought_number}, "
+                f"effective={len(selected_sellers)}, seller={max_variance_index}, "
+                f"v_j={v_j:.6f}, eta={eta_j:.4f}, eta/v={ratio:.1f}, "
+                f"price={p_j:.4f}, budget={cumulative_budget:.4f}"
+            )
         # Check stopping condition
         if cumulative_budget >= B or new_var <= alpha:
             print(f"QBCAL: Variance reduction: {(initial_var - new_var) / initial_var:.4%}")
@@ -429,7 +462,101 @@ def qbc_active_learning(x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi,
 
     return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
 
+def greedy_knapsack_benchmark(
+    x_labelled, y_labelled,
+    x_unlabelled, y_unlabelled,
+    phi, B, alpha,
+    eta_j_list,
+    price_model,
+    max_iterations=500
+):
+    """
+    Greedy knapsack baseline (reviewer):
+      - Selection: sort by 1/eta_j high->low => pick smallest eta each step.
+      - Payment:
+          SC: always pay eta_j
+          BC: pay phi * v_j if v_j>0 else 0
+      - Add to labelled set only if v_j>0 (keeps variance monotone).
+      - Always remove the approached point from unlabeled pool.
+    """
+    cumulative_budget = 0.0
+    data_bought_number = 0
+    iteration = 0
+    selected_sellers = []
+    price_list = []
+    data_bought_number_list = [0]
+    cumulative_budget_list = [0.0]
 
+    init_var_mat, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
+    previous_var = float(np.mean(np.diag(init_var_mat)))
+    var_list = [previous_var]
+
+    print(f"GreedyKnapsack: Initial Variance: {previous_var:.6f} Budget Limit = {B}, Variance Threshold = {alpha}")
+
+    while cumulative_budget < B and iteration < max_iterations:
+        iteration += 1
+        if x_unlabelled.shape[0] == 0:
+            break
+
+        # pick eta smallest <=> 1/eta largest
+        pick_idx = int(np.argmin(eta_j_list))
+        eta_j = float(eta_j_list[pick_idx])
+
+        x_point = x_unlabelled[pick_idx]
+        y_point = y_unlabelled[pick_idx]
+
+        # compute v_j (variance reduction if added)
+        prev_var_mat, _ = calculate_variance_of_coefficients_on_training(x_labelled, y_labelled)
+        prev_var = float(np.mean(np.diag(prev_var_mat)))
+
+        x_temp = np.vstack([x_labelled, x_point.reshape(1, -1)])
+        y_temp = np.append(y_labelled, y_point)
+
+        new_var_mat, _ = calculate_variance_of_coefficients_on_training(x_temp, y_temp)
+        new_var = float(np.mean(np.diag(new_var_mat)))
+
+        v_j = prev_var - new_var
+
+        # payment rule
+        if price_model == "SC":
+            p_j = eta_j
+        else:  # BC
+            p_j = float(phi * v_j) if v_j > 0 else 0.0
+
+        cumulative_budget += p_j
+        cumulative_budget_list.append(cumulative_budget)
+        price_list.append(p_j)
+
+        data_bought_number += 1
+        data_bought_number_list.append(data_bought_number)
+
+        if v_j > 0:
+            x_labelled = x_temp
+            y_labelled = y_temp
+            previous_var = new_var
+            var_list.append(new_var)
+            selected_sellers.append(pick_idx)
+            ratio = (eta_j / v_j) if v_j > 0 else np.inf
+            print(
+                f"Iteration {iteration}: , attempt={data_bought_number}, "
+                f"effective={len(selected_sellers)}, seller={pick_idx}, "
+                f"v_j={v_j:.6f}, eta={eta_j:.4f}, eta/v={ratio:.1f}, "
+                f"price={p_j:.4f}, budget={cumulative_budget:.4f}"
+            )
+        else:
+            # do not add to D_L; variance trace stays flat
+            var_list.append(previous_var)
+
+        # remove from pool regardless
+        x_unlabelled = np.delete(x_unlabelled, pick_idx, axis=0)
+        y_unlabelled = np.delete(y_unlabelled, pick_idx, axis=0)
+        eta_j_list = np.delete(eta_j_list, pick_idx, axis=0)
+
+        if cumulative_budget >= B or previous_var <= alpha:
+            print(f"GreedyKnapsack: Variance reduction: {(var_list[0] - previous_var) / var_list[0]:.4%}")
+            break
+
+    return data_bought_number_list, var_list, cumulative_budget_list, price_list, selected_sellers
 
 # add arrows and ticks for figures
 def _auto_xticks_from_lists(list1, list2, list3, num_ticks=6):
@@ -502,34 +629,61 @@ def compute_improvement_list(var_list):
     """
     base_value = var_list[0]
     return [(base_value - v) / base_value * 100 for v in var_list]
+# ======================== add arrows and ticks for figures ========================
+def _auto_xticks_from_many(*purchase_lists, num_ticks=6):
+    """
+    Generate ~num_ticks evenly spaced integer ticks starting at 1, ending at max N.
+    Accepts any number of purchase lists (e.g., VBAL/RSC/QBCAL/Greedy).
+    """
+    max_purchase = max((len(lst) for lst in purchase_lists if lst is not None), default=1)
+    if max_purchase <= 1:
+        return [1], 1
 
-# ======================== Generates Figures 3a and 4a in the paper ========================
+    step = max(1, round(max_purchase / (num_ticks - 1)))
+    xticks = list(range(1, max_purchase + 1, step))
+    if xticks[-1] != max_purchase:
+        xticks.append(max_purchase)
+    return xticks, max_purchase
+# ======================== Generates Figures 3a in the paper ========================
+
 def plot_model_improvement_comparison(
     vb_data_bought, vb_var_list,
     rsc_data_bought, rsc_var_list,
     qbc_data_bought, qbc_var_list,
+    greedy_data_bought, greedy_var_list,
     filename="model_improvement_comparison.pdf"
 ):
-    
-    vb_improve_list  = compute_improvement_list(vb_var_list)
+    vb_improve_list = compute_improvement_list(vb_var_list)
     rsc_improve_list = compute_improvement_list(rsc_var_list)
     qbc_improve_list = compute_improvement_list(qbc_var_list)
+    greedy_improve_list = compute_improvement_list(greedy_var_list)
 
     fig, ax = plt.subplots(figsize=(14, 12))
 
     ax.plot(vb_data_bought, vb_improve_list,
-            marker='o', label='VBAL', color='#d62728', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
+            marker='o', label='VBAL', color='#d62728',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#d62728', markeredgecolor='white')
+
     ax.plot(qbc_data_bought, qbc_improve_list,
-            marker='s', label='QBCAL', color='#2ca02c', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#2ca02c', markeredgecolor='white')    
+            marker='s', label='QBCAL', color='#2ca02c',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#2ca02c', markeredgecolor='white')
+
     ax.plot(rsc_data_bought, rsc_improve_list,
             marker='^', label='RSC', color='#1f77b4',
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4',markeredgecolor='white')
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#1f77b4', markeredgecolor='white')
 
-    max_purchase = max(len(vb_data_bought), len(rsc_data_bought), len(qbc_data_bought))
-    step = max(1, max_purchase // 5)
-    ax.set_xticks(range(1, max_purchase + 1, step))
+    ax.plot(greedy_data_bought, greedy_improve_list,
+            marker='D', label='Greedy Knapsack', color='#9467bd',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#9467bd', markeredgecolor='white')
+
+    xticks, max_purchase = _auto_xticks_from_many(
+        vb_data_bought, rsc_data_bought, qbc_data_bought, greedy_data_bought, num_ticks=6
+    )
+    ax.set_xticks(xticks)
 
     ax.set_xlabel('Data points purchased', fontsize=35)
     ax.set_ylabel('Model improvement [%]', fontsize=35)
@@ -540,7 +694,7 @@ def plot_model_improvement_comparison(
     ax.axhline(y=threshold, color='red', linestyle='--', linewidth=2)
     ax.text(
         max_purchase * 0.09,
-        threshold +2,
+        threshold + 2,
         f'Improvement threshold = {threshold:.0f}%',
         color='red', fontsize=30, weight='bold'
     )
@@ -557,78 +711,100 @@ def plot_model_improvement_comparison(
     save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
-# ======================== Produces a reference-only variance reduction plot for Figures 3a and 4a (not included in the paper) ========================
 
+# ======================== Reference-only variance reduction plot (not in paper) ========================
 def plot_variance_reduction_comparison(
     vb_data_bought, vb_var_list,
     rsc_data_bought, rsc_var_list,
     qbc_data_bought, qbc_var_list,
+    greedy_data_bought, greedy_var_list,
     filename
 ):
     fig, ax = plt.subplots(figsize=(14, 12))
+
     ax.plot(vb_data_bought, vb_var_list,
-            marker='o', label='VBAL', color='#d62728', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
+            marker='o', label='VBAL', color='#d62728',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#d62728', markeredgecolor='white')
+
     ax.plot(qbc_data_bought, qbc_var_list,
-             marker='s', label='QBCAL', color='#2ca02c',
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor= '#2ca02c', markeredgecolor='white')
+            marker='s', label='QBCAL', color='#2ca02c',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#2ca02c', markeredgecolor='white')
+
     ax.plot(rsc_data_bought, rsc_var_list,
-            marker='^', label='RSC', color='#1f77b4', 
-            linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
-    xticks, max_purchase = _auto_xticks_from_lists(
-        vb_data_bought, rsc_data_bought, qbc_data_bought, num_ticks=6
+            marker='^', label='RSC', color='#1f77b4',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#1f77b4', markeredgecolor='white')
+
+    ax.plot(greedy_data_bought, greedy_var_list,
+            marker='D', label='Greedy Knapsack', color='#9467bd',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#9467bd', markeredgecolor='white')
+
+    xticks, max_purchase = _auto_xticks_from_many(
+        vb_data_bought, rsc_data_bought, qbc_data_bought, greedy_data_bought, num_ticks=6
     )
     ax.set_xticks(xticks)
+
     ax.set_xlabel('Data points purchased', fontsize=35)
     ax.set_ylabel(r'Variance [ TWD$^2$]', fontsize=35)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
     ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=30)
+
     ax.axhline(y=alpha, color='red', linestyle='--', linewidth=2)
     ax.text(
-        max_purchase * 0.1,          
-        alpha - 0.0005,              
+        max_purchase * 0.1,
+        alpha - 0.0005,
         f'Variance threshold = {alpha:.3f}',
         color='red', fontsize=30, weight='bold'
     )
-    ax.legend(
-        fontsize=30,
-        loc='best'
 
-    )
+    ax.legend(fontsize=30, loc='best')
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_linewidth(2.5)
     ax.spines['left'].set_linewidth(2.5)
     _add_axis_arrows(ax, lw=2.5)
+
     plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
     save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
 
-
-# ======================== Generates Figures 3b and 4b in the paper ========================
+# ======================== Generates Figures 3b and 3c in the paper ========================
 def plot_budget_utilization_comparison(
     vb_data_bought, vb_budget_list,
     rsc_data_bought, rsc_budget_list,
     qbc_data_bought, qbc_budget_list,
+    greedy_data_bought, greedy_budget_list,
     filename
 ):
     fig, ax = plt.subplots(figsize=(14, 12))
 
     ax.plot(vb_data_bought, vb_budget_list,
-            marker='o', label='VBAL', color='#d62728', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
+            marker='o', label='VBAL', color='#d62728',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#d62728', markeredgecolor='white')
+
     ax.plot(qbc_data_bought, qbc_budget_list,
             marker='s', label='QBCAL', color='#2ca02c',
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor= '#2ca02c', markeredgecolor='white')
-    ax.plot(rsc_data_bought, rsc_budget_list,
-            marker='^', label='RSC', color='#1f77b4', 
-            linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#2ca02c', markeredgecolor='white')
 
-    # --- X ticks ---
-    xticks, max_purchase = _auto_xticks_from_lists(
-        vb_data_bought, rsc_data_bought, qbc_data_bought, num_ticks=6
+    ax.plot(rsc_data_bought, rsc_budget_list,
+            marker='^', label='RSC', color='#1f77b4',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#1f77b4', markeredgecolor='white')
+
+    ax.plot(greedy_data_bought, greedy_budget_list,
+            marker='D', label='Greedy Knapsack', color='#9467bd',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#9467bd', markeredgecolor='white')
+
+    xticks, max_purchase = _auto_xticks_from_many(
+        vb_data_bought, rsc_data_bought, qbc_data_bought, greedy_data_bought, num_ticks=6
     )
     ax.set_xticks(xticks)
 
@@ -642,15 +818,10 @@ def plot_budget_utilization_comparison(
 
     ax.set_xlabel('Data points purchased', fontsize=35)
     ax.set_ylabel('Cumulative budget [£]', fontsize=35)
-
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
     ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=30)
 
-    ax.legend(
-        fontsize=30,
-        loc='best',   
-    )
-
+    ax.legend(fontsize=30, loc='best')
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -689,11 +860,10 @@ vb_SC_data_bought, vb_SC_var_list, vb_SC_budget_list, vb_SC_price_list, vb_SC_se
 )
 
 rsc_BC_data_bought, rsc_BC_var_list, rsc_BC_budget_list, rsc_BC_price_list, rsc_BC_sellers = random_sampling_corrected_strategy(
-    x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, eta_j_list, B, alpha, price_model='BC', rsc_seed = rsc_seed
-)
+    x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, B, alpha, eta_j_list, price_model='BC', rsc_seed=rsc_seed)
 
 rsc_SC_data_bought, rsc_SC_var_list, rsc_SC_budget_list, rsc_SC_price_list, rsc_SC_sellers  = random_sampling_corrected_strategy(
-    x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, eta_j_list, B, alpha, price_model='SC', rsc_seed = rsc_seed
+    x_labelled, y_labelled, x_unlabelled, y_unlabelled, phi, B, alpha, eta_j_list, price_model='SC', rsc_seed=rsc_seed
 )
 
 qbc_BC_data_bought, qbc_BC_var_list, qbc_BC_budget_list, qbc_BC_price_list, qbc_BC_sellers = qbc_active_learning(
@@ -705,47 +875,78 @@ qbc_SC_data_bought, qbc_SC_var_list, qbc_SC_budget_list, qbc_SC_price_list, qbc_
 )
 
 
+
+# ======================== add greedy results + pass to plots ========================
+
+greedy_BC_data_bought, greedy_BC_var_list, greedy_BC_budget_list, greedy_BC_price_list, greedy_BC_sellers = greedy_knapsack_benchmark(
+    x_labelled.copy(), y_labelled.copy(),
+    x_unlabelled.copy(), y_unlabelled.copy(),
+    phi, B, alpha, eta_j_list.copy(),
+    price_model="BC"
+)
+
+greedy_SC_data_bought, greedy_SC_var_list, greedy_SC_budget_list, greedy_SC_price_list, greedy_SC_sellers = greedy_knapsack_benchmark(
+    x_labelled.copy(), y_labelled.copy(),
+    x_unlabelled.copy(), y_unlabelled.copy(),
+    phi, B, alpha, eta_j_list.copy(),
+    price_model="SC"
+)
+
 plot_model_improvement_comparison(
     vb_BC_data_bought, vb_BC_var_list,
     rsc_BC_data_bought, rsc_BC_var_list,
     qbc_BC_data_bought, qbc_BC_var_list,
+    greedy_BC_data_bought, greedy_BC_var_list,
     filename="model_improvement_comparison_BC.pdf"
 )
+
 plot_model_improvement_comparison(
     vb_SC_data_bought, vb_SC_var_list,
     rsc_SC_data_bought, rsc_SC_var_list,
     qbc_SC_data_bought, qbc_SC_var_list,
+    greedy_SC_data_bought, greedy_SC_var_list,
     filename="model_improvement_comparison_SC.pdf"
 )
-# Plotting Variance Reduction Comparisons
-plot_variance_reduction_comparison(
-    vb_BC_data_bought, vb_BC_var_list, rsc_BC_data_bought, rsc_BC_var_list, qbc_BC_data_bought, qbc_BC_var_list,
-    filename='variance_reduction_comparison_BC.pdf'
-)
 
 plot_variance_reduction_comparison(
-    vb_SC_data_bought, vb_SC_var_list, rsc_SC_data_bought, rsc_SC_var_list, qbc_SC_data_bought, qbc_SC_var_list,
-    filename='variance_reduction_comparison_SC.pdf'
+    vb_BC_data_bought, vb_BC_var_list,
+    rsc_BC_data_bought, rsc_BC_var_list,
+    qbc_BC_data_bought, qbc_BC_var_list,
+    greedy_BC_data_bought, greedy_BC_var_list,
+    filename="variance_reduction_comparison_BC.pdf"
 )
 
-# Plotting Budget Utilization Comparisons
+plot_variance_reduction_comparison(
+    vb_SC_data_bought, vb_SC_var_list,
+    rsc_SC_data_bought, rsc_SC_var_list,
+    qbc_SC_data_bought, qbc_SC_var_list,
+    greedy_SC_data_bought, greedy_SC_var_list,
+    filename="variance_reduction_comparison_SC.pdf"
+)
+
 plot_budget_utilization_comparison(
-    vb_BC_data_bought, vb_BC_budget_list, rsc_BC_data_bought, rsc_BC_budget_list, qbc_BC_data_bought, qbc_BC_budget_list,
-    filename='budget_utilization_comparison_BC.pdf'
+    vb_BC_data_bought, vb_BC_budget_list,
+    rsc_BC_data_bought, rsc_BC_budget_list,
+    qbc_BC_data_bought, qbc_BC_budget_list,
+    greedy_BC_data_bought, greedy_BC_budget_list,
+    filename="budget_utilization_comparison_BC.pdf"
 )
 
 plot_budget_utilization_comparison(
-    vb_SC_data_bought, vb_SC_budget_list, rsc_SC_data_bought, rsc_SC_budget_list, qbc_SC_data_bought, qbc_SC_budget_list,
-    filename='budget_utilization_comparison_SC.pdf'
+    vb_SC_data_bought, vb_SC_budget_list,
+    rsc_SC_data_bought, rsc_SC_budget_list,
+    qbc_SC_data_bought, qbc_SC_budget_list,
+    greedy_SC_data_bought, greedy_SC_budget_list,
+    filename="budget_utilization_comparison_SC.pdf"
 )
 
 
-
-# ======================== Generates Figure 5 in the paper ========================
+# ======================== Generates Figure 4 in the paper ========================
 def plot_percentage_variance_reduction_comparison(
-    vb_price_list, vb_variance_list,  
+    vb_price_list, vb_variance_list,
     rsc_price_list, rsc_variance_list,
     qbc_price_list, qbc_variance_list,
+    greedy_price_list, greedy_variance_list,
     filename
 ):
     """
@@ -758,41 +959,27 @@ def plot_percentage_variance_reduction_comparison(
       - eff_k = Δv_k / Δc_k
       - y[k] = (eff_1 + ... + eff_k)/k   <-- running average for smoothing
     """
-
     fig, ax = plt.subplots(figsize=(14, 12))
 
-    # scale the variance traces by 1e3 so values are nicer (1,2,3 instead of 0.001,0.002,...)
     strategies = [
-        ("VBAL", vb_price_list,  np.array(vb_variance_list)  * 1e3),
-        ("QBCAL",qbc_price_list, np.array(qbc_variance_list) * 1e3),
-        ("RSC",  rsc_price_list, np.array(rsc_variance_list) * 1e3),
-
+        ("VBAL", vb_price_list, np.array(vb_variance_list) * 1e3),
+        ("QBCAL", qbc_price_list, np.array(qbc_variance_list) * 1e3),
+        ("RSC", rsc_price_list, np.array(rsc_variance_list) * 1e3),
+        ("Greedy Knapsack", greedy_price_list, np.array(greedy_variance_list) * 1e3),
     ]
 
-    colors  = ['#d62728', '#2ca02c', '#1f77b4']
-    markers = ['o',        's',        '^'       ]
+    colors = ['#d62728', '#2ca02c', '#1f77b4', '#9467bd']
+    markers = ['o', 's', '^', 'D']
 
     for (strategy_name, price_list, variance_scaled), color, marker in zip(strategies, colors, markers):
-        # Δv_k for k >= 1
-        # variance_scaled[0] is initial variance
-        # variance_scaled[1] is after buying first point, etc.
         delta_v = [
             variance_scaled[i - 1] - variance_scaled[i]
             for i in range(1, len(variance_scaled))
         ]
-
-        # Δc_k: price paid for each purchased point
-        # assume first price corresponds to first purchase, etc.
         delta_c = price_list[:len(delta_v)]
 
-        # pointwise efficiency
-        point_eff = [
-            (dv / dc) if dc != 0 else 0
-            for dv, dc in zip(delta_v, delta_c)
-        ]
+        point_eff = [(dv / dc) if dc != 0 else 0 for dv, dc in zip(delta_v, delta_c)]
 
-        # running average efficiency:
-        # avg_eff[k] = mean(point_eff[0:k+1])
         avg_eff = []
         running_sum = 0.0
         for idx, eff in enumerate(point_eff):
@@ -809,24 +996,31 @@ def plot_percentage_variance_reduction_comparison(
             color=color,
             linewidth=3,
             markersize=25,
-            markeredgewidth=1.2, markerfacecolor=color, markeredgecolor='white')
+            markeredgewidth=1.2,
+            markerfacecolor=color,
+            markeredgecolor='white'
+        )
+
     plt.xlabel('Data points purchased', fontsize=35)
     plt.ylabel(r'$\Delta v / \Delta c$ [×$10^{-3}$ TWD$^2$/£]', fontsize=35)
+
     max_purchase = max(
         len(vb_variance_list),
         len(rsc_variance_list),
         len(qbc_variance_list),
+        len(greedy_variance_list),
     )
     step = 2
     xticks = list(range(1, max_purchase + 1, step))
     ax.set_xticks(xticks)
     ax.set_xlim(0.5, max_purchase + 0.5)
     plt.xticks(xticks, fontsize=30)
+
     ax = plt.gca()
     ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=30)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
-    # y ticks prettier: show 0, 0.5, 1.2 rather than 0.500000
     ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:.2f}".rstrip('0').rstrip('.')))
+
     plt.legend(fontsize=30, loc='best')
     plt.grid(False)
     ax.spines['top'].set_visible(False)
@@ -834,28 +1028,32 @@ def plot_percentage_variance_reduction_comparison(
     ax.spines['bottom'].set_linewidth(2.5)
     ax.spines['left'].set_linewidth(2.5)
     _add_axis_arrows(ax, lw=2.5)
-    # leave padding so arrowheads aren't cropped
+
     plt.subplots_adjust(left=0.075, right=0.988, top=0.93, bottom=0.15)
     save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
 
+# --- Figure 5 calls: add greedy ---
 plot_percentage_variance_reduction_comparison(
     vb_BC_price_list, vb_BC_var_list,
     rsc_BC_price_list, rsc_BC_var_list,
     qbc_BC_price_list, qbc_BC_var_list,
-    filename = "1_BC_v_c_vs_purchase_number.pdf"
+    greedy_BC_price_list, greedy_BC_var_list,
+    filename="1_BC_v_c_vs_purchase_number.pdf"
 )
 
 plot_percentage_variance_reduction_comparison(
     vb_SC_price_list, vb_SC_var_list,
     rsc_SC_price_list, rsc_SC_var_list,
     qbc_SC_price_list, qbc_SC_var_list,
-    filename = "1_SC_v_c_vs_purchase_number.pdf"
+    greedy_SC_price_list, greedy_SC_var_list,
+    filename="1_SC_v_c_vs_purchase_number.pdf"
 )
 
 
-# ======================== Generates Figure 6 in the paper ========================
+
+# ======================== Generates Figure 5 in the paper ========================
 def plot_sorted_price_bar_chart_with_sc(
     bc_price_list, sc_price_list,
     bc_sellers, sc_sellers,
@@ -886,25 +1084,32 @@ def plot_sorted_price_bar_chart_with_sc(
     ranks = np.arange(1, len(aligned_bc_prices) + 1)
     fig, ax = plt.subplots(figsize=(14, 12))
     # Bars
-    bar_width = 0.4
+    bar_width=0.4
     ax.bar(
         ranks - bar_width / 2,
         aligned_bc_prices,
         bar_width,
-        alpha=0.6,
+        alpha=0.7,
         label='BC (Buyer-centric)',
         color='blue',
-        edgecolor='blue'
+        edgecolor='black',
+        linewidth=1.2
     )
+
+    # SC
     ax.bar(
         ranks + bar_width / 2,
         aligned_sc_prices,
         bar_width,
-        alpha=0.6,
+        alpha=0.7,
         label='SC (Seller-centric)',
         color='red',
-        edgecolor='red'
+        edgecolor='black',   
+        linewidth=1.2,       
+        hatch='///'
     )
+
+
     # X ticks
     num_sellers = len(ranks)
     if num_sellers <11:
@@ -938,15 +1143,17 @@ def plot_sorted_price_bar_chart_with_sc(
     # Axis arrows
     _add_axis_arrows(ax, lw=2.5)
     plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
-    save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
+    out_path = PLOT_DIR / filename
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", pad_inches=0.2)
     plt.show()
 
-# Calculate the global min and max y-axis values
 all_prices = vb_BC_price_list + vb_SC_price_list + \
              qbc_BC_price_list + qbc_SC_price_list + \
-             rsc_BC_price_list + rsc_SC_price_list
-global_min_y = min(all_prices) * 0.9  # Add a 10% margin below the minimum
-global_max_y = max(all_prices) * 1.1  # Add a 10% margin above the maximum
+             rsc_BC_price_list + rsc_SC_price_list + \
+             greedy_BC_price_list + greedy_SC_price_list
+
+global_min_y = min(all_prices) * 0.9
+global_max_y = max(all_prices) * 1.1
 
 # VBAL
 plot_sorted_price_bar_chart_with_sc(
@@ -985,87 +1192,126 @@ plot_sorted_price_bar_chart_with_sc(
 )
 
 
-# ======================== Generates Table 2 in the paper (Wilcoxon signed-rank test) ========================
+# GreedyKnapsack 
+plot_sorted_price_bar_chart_with_sc(
+    bc_price_list=greedy_BC_price_list,
+    sc_price_list=greedy_SC_price_list,
+    bc_sellers=greedy_BC_sellers,
+    sc_sellers=greedy_SC_sellers,
+    strategy_name="Greedy Knapsack",
+    filename="1_price_bar_chart_greedy_bc_sc.pdf",
+    global_min_y=global_min_y,
+    global_max_y=global_max_y
+)
+
+
+# ======================== Table 2 (Wilcoxon) + Monte Carlo ========================
+
+
 
 # --- Helpers ---
 def initial_variance_mean_diag(X, Y):
     var_mat, _ = calculate_variance_of_coefficients_on_training(X, Y)
     return float(np.mean(np.diag(var_mat)))
 
-def avg_cost(prices):
-    return float(np.mean(prices)) if len(prices) > 0 else np.nan
+def total_improvement_percent(var_list):
+    """(v0 - vT)/v0 * 100"""
+    if var_list is None or len(var_list) == 0:
+        return np.nan
+    v0 = float(var_list[0])
+    vT = float(var_list[-1])
+    return (v0 - vT) / v0 * 100.0 if v0 != 0 else np.nan
+
+def improvement_per_purchased_point(var_list, purchased_n):
+    """total improvement (%) divided by #purchased points (attempt count)"""
+    if purchased_n is None or purchased_n <= 0:
+        return np.nan
+    imp = total_improvement_percent(var_list)
+    return imp / float(purchased_n) if np.isfinite(imp) else np.nan
 
 def run_one_split(seed, price_model, phi=None, B=None, eta_scale=0.5):
     """
     Runs one active learning split for a given random seed and price model.
-    Uses independent seeds for data partition, QBC bootstrap, and RSC sampling.
+    Returns:
+      VBAL/QBCAL/RSC/GK improvement-per-purchased-point (%/point),
+      and effective purchases (len(selected_sellers)) for each.
     """
-    # defaults if not provided
     if phi is None:
-        phi = 1200.0   # default WTP
+        phi = 1200.0
     if B is None:
-        B = 15.0       # default budget
+        B = 15.0
 
-    # --- independent split ---
     X_lab, X_unlab, y_lab, y_unlab = train_test_split(
         x, y, test_size=0.7, shuffle=True, random_state=seed
     )
     X_lab = X_lab.to_numpy(); X_unlab = X_unlab.to_numpy()
     y_lab = y_lab.to_numpy(); y_unlab = y_unlab.to_numpy()
 
-    # --- local parameters ---
     alpha_local = initial_variance_mean_diag(X_lab, y_lab) * 0.8
-    eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff= eta_scale)
+    eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff=eta_scale)
 
-    # --- run three strategies ---
-    vb_db, _, _, vb_prices, vb_sl = vb_active_learning(
+    vb_db, vb_var, _, vb_prices, vb_sl = vb_active_learning(
         X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
         phi, B, alpha_local, eta_local.copy(), price_model=price_model
     )
 
     bootstrap_seed = seed + 1000
-    q_db, _, _, q_prices, q_sl = qbc_active_learning(
+    q_db, q_var, _, q_prices, q_sl = qbc_active_learning(
         X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
         phi, B, alpha_local, eta_local.copy(), price_model=price_model,
         n_bootstrap=n_bootstrap, sampling_seed=bootstrap_seed
     )
 
-    rsc_seed = seed + 2000
-    r_db, _, _, r_prices, r_sl = random_sampling_corrected_strategy(
+    rsc_seed_local = seed + 2000
+    r_db, r_var, _, r_prices, r_sl = random_sampling_corrected_strategy(
         X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
-        phi, eta_local.copy(), B, alpha_local, price_model=price_model, rsc_seed=rsc_seed
+        phi,  B, alpha_local, eta_local.copy(), price_model=price_model, rsc_seed=rsc_seed_local
     )
 
-    # vb_last = vb_db[-1] if vb_db else 0
-    # q_last  = q_db[-1] if q_db else 0
-    # r_last  = r_db[-1] if r_db else 0
+    g_db, g_var, _, g_prices, g_sl = greedy_knapsack_benchmark(
+        X_lab.copy(), y_lab.copy(), X_unlab.copy(), y_unlab.copy(),
+        phi, B, alpha_local, eta_local.copy(), price_model=price_model
+    )
+
+    # purchased points = attempt count
+    vb_purchased = int(vb_db[-1]) if len(vb_db) > 0 else 0
+    q_purchased  = int(q_db[-1])  if len(q_db)  > 0 else 0
+    r_purchased  = int(r_db[-1])  if len(r_db)  > 0 else 0
+    g_purchased  = int(g_db[-1])  if len(g_db)  > 0 else 0
+
+    vb_imp_pp = improvement_per_purchased_point(vb_var, vb_purchased)
+    q_imp_pp  = improvement_per_purchased_point(q_var,  q_purchased)
+    r_imp_pp  = improvement_per_purchased_point(r_var,  r_purchased)
+    g_imp_pp  = improvement_per_purchased_point(g_var,  g_purchased)
+
+    # effective (added to training) points
     vb_eff = len(vb_sl)
     q_eff  = len(q_sl)
     r_eff  = len(r_sl)
+    g_eff  = len(g_sl)
+
+    return vb_imp_pp, q_imp_pp, r_imp_pp, g_imp_pp, vb_eff, q_eff, r_eff, g_eff
 
 
-    return np.mean(vb_prices), np.mean(q_prices), np.mean(r_prices), vb_eff, q_eff, r_eff
-
-# --- Monte-Carlo runs ---
 R = 50
 seeds = list(range(R))
 
-avgcost_BC_VBAL, avgcost_BC_QBCAL, avgcost_BC_RSC = [], [], []
-avgcost_SC_VBAL, avgcost_SC_QBCAL, avgcost_SC_RSC = [], [], []
+impPP_BC_VBAL, impPP_BC_QBCAL, impPP_BC_RSC, impPP_BC_GK = [], [], [], []
+impPP_SC_VBAL, impPP_SC_QBCAL, impPP_SC_RSC, impPP_SC_GK = [], [], [], []
 
 print("\n===============================\nExecuting Monte-Carlo runs...\n")
 for s in seeds:
-    # Buyer-centric
-    v_bc, q_bc, r_bc, _, _, _ = run_one_split(s, price_model='BC')
-    avgcost_BC_VBAL.append(v_bc)
-    avgcost_BC_QBCAL.append(q_bc)
-    avgcost_BC_RSC.append(r_bc)
+    v_bc, q_bc, r_bc, g_bc, *_ = run_one_split(s, price_model='BC')
+    impPP_BC_VBAL.append(v_bc)
+    impPP_BC_QBCAL.append(q_bc)
+    impPP_BC_RSC.append(r_bc)
+    impPP_BC_GK.append(g_bc)
 
-    # Seller-centric
-    v_sc, q_sc, r_sc, _, _, _ = run_one_split(s, price_model='SC')
-    avgcost_SC_VBAL.append(v_sc)
-    avgcost_SC_QBCAL.append(q_sc)
-    avgcost_SC_RSC.append(r_sc)
+    v_sc, q_sc, r_sc, g_sc, *_ = run_one_split(s, price_model='SC')
+    impPP_SC_VBAL.append(v_sc)
+    impPP_SC_QBCAL.append(q_sc)
+    impPP_SC_RSC.append(r_sc)
+    impPP_SC_GK.append(g_sc)
 
 
 # Create output directory for Wilcoxon results
@@ -1074,15 +1320,15 @@ wilcoxon_dir.mkdir(parents=True, exist_ok=True)
 wilcoxon_file = wilcoxon_dir / "Wilcoxon_results.txt"
 
 with open(wilcoxon_file, "w") as f:
-
     f.write("\n===============================\n")
     f.write("Paired Wilcoxon Test Results\n")
+    f.write("Metric: Improvement per purchased point (%/point)\n")
     f.write("===============================\n\n")
 
     def paired_wilcoxon(vec_a, vec_b, label_a, label_b, scheme):
-        a = np.asarray(vec_a)
-        b = np.asarray(vec_b)
-        mask = ~np.isnan(a) & ~np.isnan(b)
+        a = np.asarray(vec_a, dtype=float)
+        b = np.asarray(vec_b, dtype=float)
+        mask = np.isfinite(a) & np.isfinite(b)
         a = a[mask]
         b = b[mask]
         if len(a) == 0:
@@ -1090,42 +1336,45 @@ with open(wilcoxon_file, "w") as f:
             f.write(line)
             print(line)
             return
-        
+
         stat, p = wilcoxon(a, b, alternative='two-sided', zero_method='wilcox')
         median_diff = float(np.median(a - b))
-
         line = (
             f"{scheme}: {label_a} vs {label_b}\n"
-            f"   W={stat}, p-value={p:.4g}, median Δ={median_diff:.3f} (n={len(a)})\n\n"
+            f"   W={stat}, p-value={p:.4g}, median Δ={median_diff:.4f} (%/point) (n={len(a)})\n\n"
         )
-
         f.write(line)
         print(line)
 
-    # Run tests and save results
-    paired_wilcoxon(avgcost_BC_VBAL,  avgcost_BC_RSC, 'VBAL', 'RSC', 'BC')
-    paired_wilcoxon(avgcost_BC_QBCAL, avgcost_BC_RSC, 'QBCAL','RSC', 'BC')
-    paired_wilcoxon(avgcost_SC_VBAL,  avgcost_SC_RSC, 'VBAL', 'RSC', 'SC')
-    paired_wilcoxon(avgcost_SC_QBCAL, avgcost_SC_RSC, 'QBCAL','RSC', 'SC')
+    # BC
+    paired_wilcoxon(impPP_BC_VBAL,  impPP_BC_RSC,  'VBAL',        'RSC',          'BC')
+    paired_wilcoxon(impPP_BC_QBCAL, impPP_BC_RSC,  'QBCAL',       'RSC',          'BC')
+    paired_wilcoxon(impPP_BC_VBAL,  impPP_BC_GK,   'VBAL',        'Greedy Knapsack','BC')
+    paired_wilcoxon(impPP_BC_QBCAL, impPP_BC_GK,   'QBCAL',       'Greedy Knapsack','BC')
+
+    # SC
+    paired_wilcoxon(impPP_SC_VBAL,  impPP_SC_RSC,  'VBAL',        'RSC',          'SC')
+    paired_wilcoxon(impPP_SC_QBCAL, impPP_SC_RSC,  'QBCAL',       'RSC',          'SC')
+    paired_wilcoxon(impPP_SC_VBAL,  impPP_SC_GK,   'VBAL',        'Greedy Knapsack','SC')
+    paired_wilcoxon(impPP_SC_QBCAL, impPP_SC_GK,   'QBCAL',       'Greedy Knapsack','SC')
 
 print("\nWilcoxon results saved to:", wilcoxon_file)
 print("===============================\nDone ✅")
 
 
-# ============================================================ Generate Figure 9  in the paper ============================================================
+# ============================================================ Generate Figure 8  in the paper ============================================================
 phi_fixed = 1200
 B_fixed = B
 coeff_values = [0.5, 1, 1.5, 2, 2.5]
-B_values_BC = [10, 15, 20, 25, 30] 
+B_values_BC = [10, 15, 20, 25, 30]
 B_values_SC = [10, 15, 20, 25, 30]
 phi_values = [1000, 1050, 1100, 1150, 1200]
 
-# ======================== Generates Figures 9a and 9b in the paper (sensitivity to WTP φ) ========================
+# ======================== Figures 8a and 8b: sensitivity to WTP φ ========================
 def purchases_vs_phi(phi_list, B_fixed, price_model="BC", random_state=42):
     X_lab, X_unlab, Y_lab, Y_unlab = train_test_split(
         x, y, test_size=0.7, shuffle=True, random_state=random_state
     )
-
     X_lab = X_lab.to_numpy()
     X_unlab = X_unlab.to_numpy()
     Y_lab = Y_lab.to_numpy()
@@ -1134,17 +1383,17 @@ def purchases_vs_phi(phi_list, B_fixed, price_model="BC", random_state=42):
     alpha_local = initial_variance_mean_diag(X_lab, Y_lab) * 0.8
     eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff=0.5)
 
-    vbal_counts, qbcal_counts, rsc_counts = [], [], []
+    vbal_counts, qbcal_counts, rsc_counts, greedy_counts = [], [], [], []
 
     for i, phi_val in enumerate(phi_list):
-        vb_db, _, _, _, vb_sl = vb_active_learning(
+        _, _, _, _, vb_sl = vb_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_val, B_fixed, alpha_local, eta_local.copy(),
             price_model=price_model
         )
 
-        q_db, _, _, _, q_sl = qbc_active_learning(
+        _, _, _, _, q_sl = qbc_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_val, B_fixed, alpha_local, eta_local.copy(),
@@ -1153,80 +1402,84 @@ def purchases_vs_phi(phi_list, B_fixed, price_model="BC", random_state=42):
             sampling_seed=sampling_seed
         )
 
-        r_db, _, _, _, r_sl = random_sampling_corrected_strategy(
+        _, _, _, _, r_sl = random_sampling_corrected_strategy(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
-            phi_val, eta_local.copy(), B_fixed, alpha_local,
+            phi_val, B_fixed,  alpha_local,eta_local.copy(),
             price_model=price_model,
-            rsc_seed = rsc_seed+i
+            rsc_seed=rsc_seed + i
+        )
 
+        _, _, _, _, g_sl = greedy_knapsack_benchmark(
+            X_lab.copy(), Y_lab.copy(),
+            X_unlab.copy(), Y_unlab.copy(),
+            phi_val, B_fixed, alpha_local, eta_local.copy(),
+            price_model=price_model
         )
 
         vbal_counts.append(len(vb_sl))
         qbcal_counts.append(len(q_sl))
         rsc_counts.append(len(r_sl))
+        greedy_counts.append(len(g_sl))
 
-    return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts)
+    return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts), np.array(greedy_counts)
 
 
-def plot_sensitivity_to_phi(phi_list, B_fixed, price_model="BC",
-                            filename="sensitivity_to_phi.pdf"):
-    vbal_counts, qbcal_counts, rsc_counts = purchases_vs_phi(
+def plot_sensitivity_to_phi(phi_list, B_fixed, price_model="BC", filename="sensitivity_to_phi.pdf"):
+    vbal_counts, qbcal_counts, rsc_counts, greedy_counts = purchases_vs_phi(
         phi_list, B_fixed, price_model=price_model
     )
 
     fig, ax = plt.subplots(figsize=(14, 12))
 
     ax.plot(phi_list, vbal_counts,
-            marker='o', label='VBAL', color='#d62728', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
+            marker='o', label='VBAL', color='#d62728',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#d62728', markeredgecolor='white')
     ax.plot(phi_list, qbcal_counts,
-             marker='s', label='QBCAL', color= '#2ca02c', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor= '#2ca02c', markeredgecolor='white')
+            marker='s', label='QBCAL', color='#2ca02c',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#2ca02c', markeredgecolor='white')
     ax.plot(phi_list, rsc_counts,
-             marker='^', label='RSC', color='#1f77b4', 
-            linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
-
+            marker='^', label='RSC', color='#1f77b4',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#1f77b4', markeredgecolor='white')
+    ax.plot(phi_list, greedy_counts,
+            marker='D', label='Greedy Knapsack', color='#9467bd',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#9467bd', markeredgecolor='white')
 
     ax.set_xlabel(r'Willingness to Pay $\phi$ [£/TWD$^2$ ]', fontsize=35)
     ax.set_ylabel('Effectively purchased data points', fontsize=35)
-
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax + 0.5*(ymax-ymin))
     ax.set_xticks(phi_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
     ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=30)
-
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
-    ax.legend(
-        fontsize=30,
-        loc='best'
-    )
-
+    ax.legend(fontsize=30, loc='best')
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_linewidth(2.5)
     ax.spines['left'].set_linewidth(2.5)
-
     _add_axis_arrows(ax, lw=2.5)
+
     plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
     save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
-plot_sensitivity_to_phi(phi_values , B_fixed, price_model="BC",
-                        filename="sensitivity_to_phi_BC.pdf")
-plot_sensitivity_to_phi(phi_values , B_fixed, price_model="SC",
-                        filename="sensitivity_to_phi_SC.pdf")
+
+plot_sensitivity_to_phi(phi_values, B_fixed, price_model="BC", filename="sensitivity_to_phi_BC.pdf")
+plot_sensitivity_to_phi(phi_values, B_fixed, price_model="SC", filename="sensitivity_to_phi_SC.pdf")
 
 
-
-# ======================== Generates Figures 9c and 9d in the paper (sensitivity to WTS scaling coefficient d1) ========================
-def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed,
-                           price_model="BC", random_state=42):
+# ======================== Figures 8c and 8d: sensitivity to WTS scaling coefficient d1 ========================
+def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed, price_model="BC", random_state=42):
     X_lab, X_unlab, Y_lab, Y_unlab = train_test_split(
         x, y, test_size=0.7, shuffle=True, random_state=random_state
     )
-
     X_lab = X_lab.to_numpy()
     X_unlab = X_unlab.to_numpy()
     Y_lab = Y_lab.to_numpy()
@@ -1234,19 +1487,19 @@ def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed,
 
     alpha_local = initial_variance_mean_diag(X_lab, Y_lab) * 0.8
 
-    vbal_counts, qbcal_counts, rsc_counts = [], [], []
+    vbal_counts, qbcal_counts, rsc_counts, greedy_counts = [], [], [], []
 
     for i, coeff in enumerate(coeff_list):
         eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff=coeff)
 
-        vb_db, _, _, _, vb_sl= vb_active_learning(
+        _, _, _, _, vb_sl = vb_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_fixed, B_fixed, alpha_local, eta_local.copy(),
             price_model=price_model
         )
 
-        q_db, _, _, _,  q_sl = qbc_active_learning(
+        _, _, _, _, q_sl = qbc_active_learning(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
             phi_fixed, B_fixed, alpha_local, eta_local.copy(),
@@ -1255,39 +1508,53 @@ def purchases_vs_wts_coeff(coeff_list, phi_fixed, B_fixed,
             sampling_seed=sampling_seed
         )
 
-        r_db, _, _, _, r_sl= random_sampling_corrected_strategy(
+        _, _, _, _, r_sl = random_sampling_corrected_strategy(
             X_lab.copy(), Y_lab.copy(),
             X_unlab.copy(), Y_unlab.copy(),
-            phi_fixed, eta_local.copy(), B_fixed, alpha_local,
+            phi_fixed, B_fixed, alpha_local, eta_local.copy(),
             price_model=price_model,
-            rsc_seed = rsc_seed+i
+            rsc_seed=rsc_seed + i
+        )
+
+        _, _, _, _, g_sl = greedy_knapsack_benchmark(
+            X_lab.copy(), Y_lab.copy(),
+            X_unlab.copy(), Y_unlab.copy(),
+            phi_fixed, B_fixed, alpha_local, eta_local.copy(),
+            price_model=price_model
         )
 
         vbal_counts.append(len(vb_sl))
         qbcal_counts.append(len(q_sl))
         rsc_counts.append(len(r_sl))
+        greedy_counts.append(len(g_sl))
 
-    return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts)
+    return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts), np.array(greedy_counts)
 
 
-def plot_sensitivity_to_wts_coeff(coeff_list, phi_fixed, B_fixed,
-                                  price_model="BC",
+def plot_sensitivity_to_wts_coeff(coeff_list, phi_fixed, B_fixed, price_model="BC",
                                   filename="sensitivity_to_wts_coeff.pdf"):
-    vbal_counts, qbcal_counts, rsc_counts = purchases_vs_wts_coeff(
+    vbal_counts, qbcal_counts, rsc_counts, greedy_counts = purchases_vs_wts_coeff(
         coeff_list, phi_fixed, B_fixed, price_model=price_model
     )
 
     fig, ax = plt.subplots(figsize=(14, 12))
 
     ax.plot(coeff_list, vbal_counts,
-            marker='o', label='VBAL', color='#d62728', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
+            marker='o', label='VBAL', color='#d62728',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#d62728', markeredgecolor='white')
     ax.plot(coeff_list, qbcal_counts,
-            marker='s', label='QBCAL', color= '#2ca02c', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor= '#2ca02c', markeredgecolor='white')
+            marker='s', label='QBCAL', color='#2ca02c',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#2ca02c', markeredgecolor='white')
     ax.plot(coeff_list, rsc_counts,
-            marker='^', label='RSC', color='#1f77b4', 
-            linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
+            marker='^', label='RSC', color='#1f77b4',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#1f77b4', markeredgecolor='white')
+    ax.plot(coeff_list, greedy_counts,
+            marker='D', label='Greedy Knapsack', color='#9467bd',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#9467bd', markeredgecolor='white')
 
     ax.set_xlabel(r'WTS scaling coefficient $d_1$', fontsize=35)
     ax.set_ylabel('Effectively purchased data points', fontsize=35)
@@ -1295,12 +1562,9 @@ def plot_sensitivity_to_wts_coeff(coeff_list, phi_fixed, B_fixed,
     ax.set_xticks(coeff_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
     ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=30)
-
-    ax.legend(
-        fontsize=30,
-        loc='best'
-    )
-
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin , ymax + 0.5*(ymax-ymin))
+    ax.legend(fontsize=30, loc='best')
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -1308,52 +1572,41 @@ def plot_sensitivity_to_wts_coeff(coeff_list, phi_fixed, B_fixed,
     ax.spines['left'].set_linewidth(2.5)
 
     _add_axis_arrows(ax, lw=2.5)
-
     plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
     save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
 
 
+plot_sensitivity_to_wts_coeff(coeff_values, phi_fixed, B_fixed, price_model="BC",
+                              filename="sensitivity_to_wts_coeff_BC.pdf")
+plot_sensitivity_to_wts_coeff(coeff_values, phi_fixed, B_fixed, price_model="SC",
+                              filename="sensitivity_to_wts_coeff_SC.pdf")
 
-plot_sensitivity_to_wts_coeff(
-    coeff_values, phi_fixed, B_fixed,
-    price_model="BC",
-    filename="sensitivity_to_wts_coeff_BC.pdf"
-)
 
-plot_sensitivity_to_wts_coeff(
-    coeff_values, phi_fixed, B_fixed,
-    price_model="SC",
-    filename="sensitivity_to_wts_coeff_SC.pdf"
-)
-
-# ======================== Generates Figures 9e and 9f in the paper (sensitivity to budget limit B) ========================
+# ======================== Figures 8e and 8f: sensitivity to budget limit B ========================
 def purchases_vs_budget(B_list, price_model="BC", random_state=42):
     X_lab, X_unlab, y_lab, y_unlab = train_test_split(
         x, y, test_size=0.7, shuffle=True, random_state=random_state
     )
-
     X_lab = X_lab.to_numpy()
     X_unlab = X_unlab.to_numpy()
     y_lab = y_lab.to_numpy()
     y_unlab = y_unlab.to_numpy()
 
-    # very loose target so they keep buying
-    alpha_local = initial_variance_mean_diag(X_lab, y_lab) * 0.1
-
+    alpha_local = initial_variance_mean_diag(X_lab, y_lab) * 0.8
     eta_local = generate_eta_j(X_unlab, feature_columns, offset=0.1, coeff=0.5)
 
-    vbal_counts, qbcal_counts, rsc_counts = [], [], []
+    vbal_counts, qbcal_counts, rsc_counts, greedy_counts = [], [], [], []
 
     for i, B_val in enumerate(B_list):
-        vb_db, _, _, _, vb_sl= vb_active_learning(
+        _, _, _, _, vb_sl = vb_active_learning(
             X_lab.copy(), y_lab.copy(),
             X_unlab.copy(), y_unlab.copy(),
             phi, B_val, alpha_local, eta_local.copy(),
             price_model=price_model
         )
 
-        q_db, _, _, _, q_sl = qbc_active_learning(
+        _, _, _, _, q_sl = qbc_active_learning(
             X_lab.copy(), y_lab.copy(),
             X_unlab.copy(), y_unlab.copy(),
             phi, B_val, alpha_local, eta_local.copy(),
@@ -1362,39 +1615,52 @@ def purchases_vs_budget(B_list, price_model="BC", random_state=42):
             sampling_seed=sampling_seed
         )
 
-        r_db, _, _, _, r_sl = random_sampling_corrected_strategy(
+        _, _, _, _, r_sl = random_sampling_corrected_strategy(
             X_lab.copy(), y_lab.copy(),
             X_unlab.copy(), y_unlab.copy(),
-            phi, eta_local.copy(), B_val, alpha_local,
+            phi, B_val,  alpha_local,eta_local.copy(),
             price_model=price_model,
-            rsc_seed = rsc_seed+i
+            rsc_seed=rsc_seed + i
+        )
 
+        _, _, _, _, g_sl = greedy_knapsack_benchmark(
+            X_lab.copy(), y_lab.copy(),
+            X_unlab.copy(), y_unlab.copy(),
+            phi, B_val, alpha_local, eta_local.copy(),
+            price_model=price_model
         )
 
         vbal_counts.append(len(vb_sl))
         qbcal_counts.append(len(q_sl))
         rsc_counts.append(len(r_sl))
+        greedy_counts.append(len(g_sl))
 
-    return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts)
+    return np.array(vbal_counts), np.array(qbcal_counts), np.array(rsc_counts), np.array(greedy_counts)
 
 
 def plot_sensitivity_to_budget(B_list, price_model="BC", filename="sensitivity_to_budget.pdf"):
-    vbal_counts, qbcal_counts, rsc_counts = purchases_vs_budget(
+    vbal_counts, qbcal_counts, rsc_counts, greedy_counts = purchases_vs_budget(
         B_list, price_model=price_model
     )
 
     fig, ax = plt.subplots(figsize=(14, 12))
 
     ax.plot(B_list, vbal_counts,
-            marker='o', label='VBAL', color='#d62728', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor='#d62728',markeredgecolor='white')
+            marker='o', label='VBAL', color='#d62728',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#d62728', markeredgecolor='white')
     ax.plot(B_list, qbcal_counts,
-            marker='s', label='QBCAL', color= '#2ca02c', 
-            linewidth=3, markersize=25, markeredgewidth=1.2, markerfacecolor= '#2ca02c', markeredgecolor='white')
-
+            marker='s', label='QBCAL', color='#2ca02c',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#2ca02c', markeredgecolor='white')
     ax.plot(B_list, rsc_counts,
-             marker='^', label='RSC', color='#1f77b4', 
-            linewidth=3,  markersize=25, markeredgewidth=1.2, markerfacecolor='#1f77b4', markeredgecolor='white')
+            marker='^', label='RSC', color='#1f77b4',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#1f77b4', markeredgecolor='white')
+    ax.plot(B_list, greedy_counts,
+            marker='D', label='Greedy Knapsack', color='#9467bd',
+            linewidth=3, markersize=25, markeredgewidth=1.2,
+            markerfacecolor='#9467bd', markeredgecolor='white')
 
     ax.set_xlabel('Budget limit $B$ [£]', fontsize=35)
     ax.set_ylabel('Effectively purchased data points', fontsize=35)
@@ -1402,14 +1668,11 @@ def plot_sensitivity_to_budget(B_list, price_model="BC", filename="sensitivity_t
     ax.set_xticks(B_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
     ax.tick_params(axis='y', width=2.5, length=8, direction='out', labelsize=30)
-
     ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin , ymax + 0.5*(ymax-ymin))
 
-    ax.legend(
-        fontsize=30,
-        loc='best'
-    )
-
+    ax.legend(fontsize=30, loc='best')
     ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -1420,54 +1683,60 @@ def plot_sensitivity_to_budget(B_list, price_model="BC", filename="sensitivity_t
     plt.subplots_adjust(left=0.18, right=0.95, top=0.9, bottom=0.18)
     save_fig_consistent(fig, filename, width=14, height=12, dpi=300)
     plt.show()
-plot_sensitivity_to_budget(B_values_BC, price_model="BC", filename="sensitivity_to_budget_BC.pdf") 
+
+
+plot_sensitivity_to_budget(B_values_BC, price_model="BC", filename="sensitivity_to_budget_BC.pdf")
 plot_sensitivity_to_budget(B_values_SC, price_model="SC", filename="sensitivity_to_budget_SC.pdf")
 
-
 # ============================================================
-# Appendix: Generate Table 4 and 5 for Monte Carlo robustness evaluation (50 independent partitions)
-# ============================================================
+# Appendix: Generate Table 4  for Monte Carlo robustness evaluation (50 independent partitions)
+# # ============================================================
 
 
 def monte_carlo_summary(param_list, B_fixed, price_model="BC", runs=50, param_name="phi"):
+    """
+    Summary table for robustness (Tables 4/5).
+    Output columns include VBAL/QBCAL/RSC/Greedy Knapsack mean, p25, p75 of effective purchases.
+    """
     records = []
 
     for val in param_list:
-        vb_counts, q_counts, r_counts = [], [], []
+        vb_counts, q_counts, r_counts, g_counts = [], [], [], []
 
         for s in range(runs):
-            _,_,_,vb_eff, q_eff, r_eff = run_one_split(
-                seed = 100 + s,
-                price_model = price_model,
-                phi = val if param_name == "phi" else 1200,
-                B   = val if param_name == "B" else B_fixed,
-                eta_scale = val if param_name == "eta" else 0.5
+            *_, vb_eff, q_eff, r_eff, g_eff = run_one_split(
+                seed=100 + s,
+                price_model=price_model,
+                phi=val if param_name == "phi" else 1200,
+                B=val if param_name == "B" else B_fixed,
+                eta_scale=val if param_name == "eta" else 0.5
             )
-
             vb_counts.append(vb_eff)
             q_counts.append(q_eff)
             r_counts.append(r_eff)
+            g_counts.append(g_eff)
 
         def summarize(arr):
-            arr = np.array(arr)
-            return np.mean(arr), np.percentile(arr, 25), np.percentile(arr, 75)
+            arr = np.array(arr, dtype=float)
+            return float(np.mean(arr)), float(np.percentile(arr, 25)), float(np.percentile(arr, 75))
 
         vb_mean, vb_p25, vb_p75 = summarize(vb_counts)
         qb_mean, qb_p25, qb_p75 = summarize(q_counts)
         r_mean,  r_p25,  r_p75  = summarize(r_counts)
+        g_mean,  g_p25,  g_p75  = summarize(g_counts)
 
         records.append({
             param_name: val,
             "VBAL_mean": vb_mean, "VBAL_p25": vb_p25, "VBAL_p75": vb_p75,
             "QBCAL_mean": qb_mean, "QBCAL_p25": qb_p25, "QBCAL_p75": qb_p75,
-            "RSC_mean":  r_mean,  "RSC_p25":  r_p25,  "RSC_p75":  r_p75
+            "RSC_mean": r_mean, "RSC_p25": r_p25, "RSC_p75": r_p75,
+            "Greedy_mean": g_mean, "Greedy_p25": g_p25, "Greedy_p75": g_p75,
         })
 
     return pd.DataFrame(records)
 
 
 # === Run and print the Monte Carlo summary ===
-
 
 # Buyer-Centric
 df_wtp_bc = monte_carlo_summary(phi_values, B_fixed, price_model="BC", runs=50, param_name="phi")
@@ -1479,7 +1748,6 @@ df_wtp_sc = monte_carlo_summary(phi_values, B_fixed, price_model="SC", runs=50, 
 df_wts_sc = monte_carlo_summary(coeff_values, B_fixed, price_model="SC", runs=50, param_name="eta")
 df_b_sc   = monte_carlo_summary(B_values_SC, B_fixed=None, price_model="SC", runs=50, param_name="B")
 
-# Print
 print("\n=== Sensitivity on WTP (φ) — Buyer-Centric ===")
 print(df_wtp_bc.round(2))
 print("\n=== Sensitivity on WTP (φ) — Seller-Centric ===")
@@ -1492,7 +1760,8 @@ print("\n=== Sensitivity on Budget (B) — Buyer-Centric ===")
 print(df_b_bc.round(2))
 print("\n=== Sensitivity on Budget (B) — Seller-Centric ===")
 print(df_b_sc.round(2))
-# === Save sensitivity analysis results ===
+
+# === Save sensitivity analysis results (UPDATED: include Greedy) ===
 sensitivity_results = {
     "WTP_BC": df_wtp_bc,
     "WTP_SC": df_wtp_sc,
@@ -1502,19 +1771,12 @@ sensitivity_results = {
     "Budget_SC": df_b_sc,
 }
 
-# Create output directory
 output_dir = THIS_DIR / "Plots" / "Sensitivity_Results"
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Save each table as CSV
 for name, df in sensitivity_results.items():
     df.to_csv(output_dir / f"{name}.csv", index=False)
 
 print("\nSensitivity analysis tables saved to:")
 print(output_dir)
-
-end_time = time.time()
-print("\n===================================")
-print(f"Total runtime: {(end_time - start_time) / 60:.2f} minutes")
-print("===================================\n")
 
