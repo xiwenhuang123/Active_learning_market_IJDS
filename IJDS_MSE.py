@@ -3,10 +3,10 @@ Predictive-ability-focused scenario (building energy case study).
 Author: Xiwen Huang
 
 This script reproduces the following results in the paper:
+- Figure 9
 - Figure 10
-- Figure 11
-- Figures 14a–14f
-- Tables 6 and 7 (Appendix)
+- Figures 13a–13f
+- Tables 5 (Appendix)
 
 It also generates additional diagnostic plots that are not shown in the paper.
 """
@@ -22,6 +22,7 @@ import glob
 from matplotlib.ticker import MaxNLocator
 from pathlib import Path
 import time
+import os
 
 
 # ============================ Paths & timer ============================
@@ -33,7 +34,7 @@ THIS_DIR = Path(__file__).resolve().parent
 PLOT_DIR = THIS_DIR / "Plots" / "MSEScenario"
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
-DATA_DIR = THIS_DIR / "data" / "Hog_buildings"
+DATA_DIR = Path(os.getenv("IJDS_DATA_DIR", str(Path.home() / "Active_learning_market_IJDS" / "Data" / "Hog_buildings"))).expanduser().resolve()
 
 
 
@@ -630,7 +631,7 @@ plot_budget_utilization_comparison(
 )
 
 
-# ======================== Generates Figure 10 in the paper ========================
+# ======================== Generates Figure 9 in the paper ========================
 def plot_percentage_mse_reduction_comparison(
     vb_price_list, vb_mse_list,
     rsc_price_list, rsc_mse_list,
@@ -759,7 +760,7 @@ plot_percentage_mse_reduction_comparison(
 )
 
 
-# ======================== Generates Figure 11 in the paper ========================
+# ======================== Generates Figure 10 in the paper ========================
 def plot_sorted_price_bar_chart_with_sc(
     bc_price_list, sc_price_list, bc_sellers, sc_sellers, strategy_name, filename, global_min_y, global_max_y
 ):
@@ -786,24 +787,31 @@ def plot_sorted_price_bar_chart_with_sc(
 
     # Plot bar charts
     bar_width = 0.4
+    # BC
     ax.bar(
         ranks - bar_width / 2,
         aligned_bc_prices,
         bar_width,
-        alpha=0.6,
+        alpha=0.7,
         label='BC (Buyer-centric)',
         color='blue',
-        edgecolor='blue'
+        edgecolor='black',
+        linewidth=1.2
     )
+
+    # SC
     ax.bar(
         ranks + bar_width / 2,
         aligned_sc_prices,
         bar_width,
-        alpha=0.6,
+        alpha=0.7,
         label='SC (Seller-centric)',
         color='red',
-        edgecolor='red'
+        edgecolor='black',   
+        linewidth=1.2,       
+        hatch='///'
     )
+
        # X ticks
     num_sellers = len(ranks)
 
@@ -872,9 +880,9 @@ plot_sorted_price_bar_chart_with_sc(
 )
 
 
-# ======================== Generates Figure 14a-14f in the paper ========================
+# ======================== Generates Figure 13a-13f in the paper ========================
 
-# =====Generates Figures 14a and 14b in the paper ======
+# =====Generates Figures 13a and 13b in the paper ======
 def purchases_vs_phi_mse(phi_list, B_fixed, price_model="BC", seed=42):
     vbal_counts, qbcal_counts, rsc_counts = [], [], []
     choose2 = ['Hog_education_Madge', 'Hog_education_Rachael']
@@ -965,7 +973,7 @@ plot_sensitivity_to_phi_mse(phi_values, B_fixed=1200, price_model="SC",
                             filename="sens_phi_SC.pdf")
 
 
-# =====Generates Figures 14c and 14d in the paper ======
+# =====Generates Figures 13c and 13d in the paper ======
 def purchases_vs_wts_scale_mse(scale_list, phi_fixed, B_fixed,
                                price_model="BC"):
     vbal_counts, qbcal_counts, rsc_counts = [], [], []
@@ -1034,7 +1042,7 @@ def plot_sensitivity_to_wts_scale_mse(scale_list, phi_fixed, B_fixed,
             linewidth=3, markersize=25, markeredgewidth=1.2,
             markerfacecolor='#1f77b4', markeredgecolor='white')
 
-    ax.set_xlabel(r'WTS scaling factor', fontsize=35)
+    ax.set_xlabel(r'WTS scaling factor $\gamma$', fontsize=35)
     ax.set_ylabel('Effectively purchased data points', fontsize=35)
     ax.set_xticks(scale_list)
     ax.tick_params(axis='x', width=2.5, length=8, direction='out', labelsize=30)
@@ -1065,7 +1073,7 @@ plot_sensitivity_to_wts_scale_mse(
 )
 
 
-# =====Generates Figures 14e and 14f in the paper ======
+# =====Generates Figures 13e and 13f in the paper ======
 def purchases_vs_budget_mse(B_list, price_model="BC", phi=50):
     vbal_counts, qbcal_counts, rsc_counts = [], [], []
     # fixed split
@@ -1155,7 +1163,7 @@ plot_sensitivity_to_budget_mse(B_values, price_model="SC", filename="sens_B_SC.p
 
 
 # ============================================================
-# Appendix: Generate Tables 6 and 7 (Monte Carlo robustness evaluation, 50 independent partitions)
+# Appendix: Generate Tables 5 (Monte Carlo robustness evaluation, 50 independent partitions)
 # ============================================================
 
 def _run_one_al_split(seed, price_model, phi, B, eta_scale=1.0):
@@ -1283,80 +1291,3 @@ print("\n===================================")
 print(f"Total runtime: {(end_time - start_time) / 60:.2f} minutes")
 print("===================================\n")
 
-
-# # ===============================
-# # Wilcoxon tests on Avg. Cost (MSE-dependent scenario)
-# # ===============================
-# from scipy.stats import wilcoxon
-
-# def avg_cost(prices):
-#     return float(np.mean(prices)) if len(prices) > 0 else np.nan
-
-# def run_one_mse_split(seed, price_model):
-#     # Same two buildings; variability comes from subsampling with the seed
-#     choose2 = ['Hog_education_Madge', 'Hog_education_Rachael']
-#     x_lab, x_unlab, y_lab, y_unlab, x_val, y_val = Algorithm(choose2, seed=seed)
-
-#     # Per-run threshold (your definition): beta = 0.8 * initial MSE
-#     model = LinearRegression().fit(x_lab, y_lab)
-#     init_mse = fit_model_and_compute_mse(model, x_val, y_val)
-#     beta_local = init_mse * 0.8
-
-#     # Per-run eta_j (constant 30 as in your script)
-#     eta_run = np.full(x_unlab.shape[0], 30.0)
-
-#     # Run the three strategies on the SAME split (pairing unit = run)
-#     vb_db, vb_mse, vb_budget, vb_prices, _ = vb_active_learning(
-#         x_lab.copy(), y_lab.copy(), x_unlab.copy(), y_unlab.copy(), x_val, y_val,
-#         phi=50, B=1200, beta=beta_local, eta_j=eta_run, price_model=price_model
-#     )
-
-#     q_db, q_mse, q_budget, q_prices, _ = qbc_active_learning(
-#         x_lab.copy(), y_lab.copy(), x_unlab.copy(), y_unlab.copy(), x_val, y_val,
-#         phi=50, B=1200, beta=beta_local, eta_j=eta_run, price_model=price_model,
-#         n_bootstrap=10, sampling_seed=42
-#     )
-
-#     r_db, r_mse, r_budget, r_prices, _ = random_sampling_corrected_strategy(
-#         x_lab.copy(), y_lab.copy(), x_unlab.copy(), y_unlab.copy(), x_val, y_val,
-#         phi=50, eta_j=eta_run, B=1200, beta=beta_local, price_model=price_model
-#     )
-
-#     return avg_cost(vb_prices), avg_cost(q_prices), avg_cost(r_prices)
-
-# def paired_wilcoxon(vec_a, vec_b, label_a, label_b, scheme):
-#     a = np.asarray(vec_a); b = np.asarray(vec_b)
-#     mask = ~np.isnan(a) & ~np.isnan(b)
-#     a = a[mask]; b = b[mask]
-#     if len(a) == 0:
-#         print(f"{scheme}: Not enough paired runs for {label_a} vs {label_b}.")
-#         return
-#     stat, p = wilcoxon(a, b, alternative='two-sided', zero_method='wilcox')
-#     diff = a - b
-#     print(f"{scheme}: {label_a} vs {label_b} -> Wilcoxon W={stat}, p={p:.4g}, "
-#           f"median Δ={np.median(diff):.3f} (Avg. Cost £/label) over n={len(a)} paired runs")
-
-# # Number of runs (increase if you like)
-# R = 50
-# seeds = list(range(R))
-
-# # Buyer-centric (BC)
-# avgcost_BC_VBAL, avgcost_BC_QBCAL, avgcost_BC_RSC = [], [], []
-# for s in seeds:
-#     v, q, r = run_one_mse_split(s, price_model='BC')
-#     avgcost_BC_VBAL.append(v); avgcost_BC_QBCAL.append(q); avgcost_BC_RSC.append(r)
-
-# # Seller-centric (SC)
-# avgcost_SC_VBAL, avgcost_SC_QBCAL, avgcost_SC_RSC = [], [], []
-# for s in seeds:
-#     v, q, r = run_one_mse_split(s, price_model='SC')
-#     avgcost_SC_VBAL.append(v); avgcost_SC_QBCAL.append(q); avgcost_SC_RSC.append(r)
-
-# # Paired tests (report medians as effect size)
-# paired_wilcoxon(avgcost_BC_VBAL,  avgcost_BC_QBCAL, 'VBAL',  'QBCAL', 'BC')
-# paired_wilcoxon(avgcost_BC_VBAL,  avgcost_BC_RSC,   'VBAL',  'RSC',   'BC')
-# paired_wilcoxon(avgcost_BC_QBCAL, avgcost_BC_RSC,   'QBCAL', 'RSC',   'BC')
-
-# paired_wilcoxon(avgcost_SC_VBAL,  avgcost_SC_QBCAL, 'VBAL',  'QBCAL', 'SC')
-# paired_wilcoxon(avgcost_SC_VBAL,  avgcost_SC_RSC,   'VBAL',  'RSC',   'SC')
-# paired_wilcoxon(avgcost_SC_QBCAL, avgcost_SC_RSC,   'QBCAL', 'RSC',   'SC')
